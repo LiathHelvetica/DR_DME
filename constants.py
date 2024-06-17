@@ -26,4 +26,4 @@ IDRID_LABEL_PATH_2 = f"{IDRID_PATH}/Groundtruths/IDRiD_Disease Grading_Training_
 IDRID_IMG_PATH_1 = f"{IDRID_PATH}/OriginalImages/Test"
 IDRID_IMG_PATH_2 = f"{IDRID_PATH}/OriginalImages/Train"
 
-IMG_CROPPER_THRESHOLD = 20
+IMG_CROPPER_THRESHOLD = 15

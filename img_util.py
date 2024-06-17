@@ -11,6 +11,9 @@ def img_to_square(path: str, threshold: int = IMG_CROPPER_THRESHOLD) -> NDArray[
   gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
   _, img_thresh = cv2.threshold(gray, threshold, 255, cv2.THRESH_BINARY)
 
+  kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (8, 8))
+  img_thresh = cv2.morphologyEx(img_thresh, cv2.MORPH_OPEN, kernel)
+
   pts = np.argwhere(img_thresh > 0)
   y1, x1 = pts.min(axis=0)
   y2, x2 = pts.max(axis=0)
