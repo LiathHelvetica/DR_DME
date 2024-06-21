@@ -1,7 +1,6 @@
 import cv2
 import albumentations as al
 from numpy import ndarray
-import tensorflow as tf
 
 
 def crop(fi: ndarray) -> ndarray:
@@ -15,10 +14,12 @@ def identity_transform(fi: ndarray) -> ndarray:
 	return fi
 
 
+""""
 def to_square(fi: ndarray) -> ndarray:
 	size = max(fi.shape[0], fi.shape[1])
 	out = tf.image.resize_with_pad(fi, size, size).numpy()
 	return out
+"""
 
 
 def get_rotation_transform(deg: int):
