@@ -3,15 +3,18 @@ from typing import Self
 from albumentations import BasicTransform
 from keras import Layer
 
-from augmentation_util import identity_transform
 from augmentation_util.fundus_image import FundusImage
 from constants import AUGMENTATION_NAME_SEPARATOR
+
+
+def identity_transformation(v):
+	return v
 
 
 # t - Layer (tensorflow) | BasicTransform (album) | f: ndarray -> ndarray | FundusTransformation
 class FundusTransformation:
 
-	def __init__(self, transform_f = identity_transform, name: str = ""):
+	def __init__(self, transform_f = identity_transformation, name: str = ""):
 		self.name = name
 		if isinstance(transform_f, Layer):
 			def out(ndarr):
