@@ -10,16 +10,16 @@ import albumentations as al
 import itertools as it
 import pandas as pd
 
-from constants import COMBINED_LABEL_PATH, IMG_LABEL, COMBINED_IMG_PATH, AUGMENTATION_TEST_OUT_DATA_PATH, DME_LABEL
-
-OUT_SIZE = 224
-IN_PATH = COMBINED_LABEL_PATH
-OUT_PATH = AUGMENTATION_TEST_OUT_DATA_PATH
-HEALTHY_TARGET_PER_IMG = 32
-UNHEALTHY_TARGET_PER_IMG = 128
+from constants import COMBINED_LABEL_PATH, IMG_LABEL, COMBINED_IMG_PATH, DME_LABEL, AUGMENTATION_OUT_PATH
 
 
-def main() -> None:
+def main(out_size: int, out_path: str = AUGMENTATION_OUT_PATH) -> None:
+	OUT_SIZE = out_size
+	IN_PATH = COMBINED_LABEL_PATH
+	OUT_PATH = f"{out_path}_{out_size}"
+	HEALTHY_TARGET_PER_IMG = 32
+	UNHEALTHY_TARGET_PER_IMG = 128
+
 	safe_transforms = [
 		FundusTransformation()
 		.compose(al.CLAHE(clip_limit=4.0, tile_grid_size=(4, 4), p=1.0), name="clahe")
@@ -126,4 +126,4 @@ def main() -> None:
 
 # 1 healthy DME -> ???
 if __name__ == "__main__":
-	main()
+	main(224)
