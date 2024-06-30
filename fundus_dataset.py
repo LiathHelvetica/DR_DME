@@ -2,7 +2,7 @@ from pandas import read_csv, DataFrame
 from torch.utils.data import Dataset
 from torchvision.io import read_image
 from torch import Tensor
-import torchvision.transforms as transforms
+import torchvision.transforms.functional as tft
 
 from constants import ID_LABEL
 from img_util import get_id_from_f_name
@@ -51,10 +51,6 @@ class FundusImageDataset(Dataset):
 		f_name = self.img_list[index]
 		id = get_id_from_f_name(f_name)
 		data = read_image(f"{self.img_path}/{f_name}")
-		"""
-		data = data.float() / 255.0
-		if self.with_normalize:
-			transform.append(transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225]))
-		data = transforms.Compose(transform)(data)
-		"""
+		data = data / 255.0
+		tft.normalize(data, mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225], inplace=True)
 		return data, self.get_label_by_id(id)

@@ -1,62 +1,92 @@
 import os
 from datetime import datetime
+import json
 
 import torch
 import torch.nn as nn
 import torch.optim as optim
 from pandas import read_csv, DataFrame
-from sklearn.utils import class_weight
-import numpy as np
+from torch import Tensor
 from torch.utils.data import DataLoader
 from torchvision import models
 from sklearn.model_selection import train_test_split
 
 from itertools import product
 
-from constants import AUGMENTATION_OUT_PATH, COMBINED_LABEL_PATH, DME_LABEL, ID_LABEL, TEST_SPLIT_VALUE, TRAIN_DATASET_LABEL, TEST_DATASET_LABEL, LEARN_OUT_PATH, CSV_HEADERS, LAST_EPISODE_DONE_FILE, BATCH_SIZE, EPOCHS, LOG_EVERY_BATCHES_AMOUNT, MODEL_CHECKPOINT_OUT_PATH, LAST_EPOCH_DONE_FILE
+from constants import AUGMENTATION_OUT_PATH, COMBINED_LABEL_PATH, DME_LABEL, ID_LABEL, TEST_SPLIT_VALUE, TRAIN_DATASET_LABEL, TEST_DATASET_LABEL, LEARN_OUT_PATH, LAST_EPISODE_DONE_FILE, BATCH_SIZE, EPOCHS, LOG_EVERY_BATCHES_AMOUNT, MODEL_CHECKPOINT_OUT_PATH, LAST_EPOCH_DONE_FILE, CONFUSION_MATRIX_ORIGINAL_VALUE_LABEL, CONFUSION_MATRIX_PREDICTION_VALUE_LABEL, CONFUSION_MATRIX_COUNT_LABEL, TRAIN_ACC_KEY, TRAIN_LOSS_KEY, TEST_ACC_KEY, TEST_LOSS_KEY, EPOCH_KEY, BATCH_SIZE_KEY, CRITERION_KEY, OPTIMIZER_NAME_KEY, OPTIMIZER_LR_KEY, OPTIMIZER_MOMENTUM_KEY, BASE_MODEL_NAME_KEY, SCHEDULER_NAME_KEY, SCHEDULER_STEP_SIZE_KEY, SCHEDULER_GAMMA_KEY, T_DELTA_KEY, N_SAMPLES_TRAIN_KEY, N_SAMPLES_TEST_KEY, N_CORRECT_TRAIN_KEY, N_CORRECT_TEST_KEY, CONFUSION_MATRIX_TRAIN_KEY, CONFUSION_MATRIX_TEST_KEY
 from fundus_dataset import FundusImageDataset
 from img_util import get_id_from_f_name
 from no_op_scheduler import NoOpScheduler
-from util import try_or_else
+from util import try_or_else, dict_update_or_default
+
+
+def default_item_conf_matrix(orig: float, pred: float) -> dict:
+	return {
+		CONFUSION_MATRIX_ORIGINAL_VALUE_LABEL: orig,
+		CONFUSION_MATRIX_PREDICTION_VALUE_LABEL: pred,
+		CONFUSION_MATRIX_COUNT_LABEL: 1
+	}
+
+
+def update_confusion_matrix_entry(d: dict) -> dict:
+	d[CONFUSION_MATRIX_COUNT_LABEL] = d[CONFUSION_MATRIX_COUNT_LABEL] + 1
+	return d
+
+
+def update_confusion_matrix(d: dict[(float, float), dict], orig_t: Tensor, pred_t: Tensor) -> dict[(float, float), dict]:
+	for orig_t_item, pred_t_item in zip(orig_t, pred_t):
+		orig = orig_t_item.item()
+		pred = pred_t_item.item()
+		dict_update_or_default(
+			d,
+			(orig, pred),
+			default_item_conf_matrix(orig, pred),
+			update_confusion_matrix_entry
+		)
+	return d
 
 
 def get_model_data(
-	acc_train,
-	acc_val,
-	epochs,
+	epoch_acc_train,
+	epoch_loss_train,
+	epoch_acc_val,
+	epoch_loss_val,
+	epoch,
+	batch_size,
 	criterion,
 	optimizer,
 	m_name,
 	scheduler,
-	tdelta,
-	loss,
-	val_size,
-	corrects_total_train,
-	corrects_total_val,
-	counters_val
-):
+	t_delta,
+	len_train_ds,
+	len_test_ds,
+	running_corrects_train,
+	running_corrects_val,
+	train_conf_matrix,
+	val_conf_matrix
+) -> dict:
 	return {
-		CSV_HEADERS[0]: acc_train.item(),
-		CSV_HEADERS[1]: acc_val.item(),
-		# CSV_HEADERS[1]: acc_test.item(),
-		CSV_HEADERS[2]: epochs,
-		CSV_HEADERS[3]: type(criterion).__name__,
-		CSV_HEADERS[4]: type(optimizer).__name__,
-		CSV_HEADERS[5]: optimizer.defaults["lr"],
-		CSV_HEADERS[6]: try_or_else(lambda: optimizer.defaults["momentum"], "no momentum for optimizer"),
-		CSV_HEADERS[7]: m_name,
-		CSV_HEADERS[8]: type(scheduler).__name__,
-		CSV_HEADERS[9]: try_or_else(lambda: scheduler.step_size, "no-op"),
-		CSV_HEADERS[10]: try_or_else(lambda: scheduler.gamma, "no-op"),
-		CSV_HEADERS[11]: str(tdelta),
-		CSV_HEADERS[12]: loss,
-		CSV_HEADERS[13]: val_size,
-		# CSV_HEADERS[14]: test_size,
-		CSV_HEADERS[14]: corrects_total_train.item(),
-		CSV_HEADERS[15]: corrects_total_val.item(),
-		# CSV_HEADERS[16]: corrects_total_test.item(),
-		CSV_HEADERS[16]: f'"{str(counters_val)}"',
-		# CSV_HEADERS[18]: f'"{str(counters_test)}"'
+		TRAIN_ACC_KEY: epoch_acc_train.item(),
+		TRAIN_LOSS_KEY: epoch_loss_train,
+		TEST_ACC_KEY: epoch_acc_val.item(),
+		TEST_LOSS_KEY: epoch_loss_val,
+		EPOCH_KEY: epoch,
+		BATCH_SIZE_KEY: batch_size,
+		CRITERION_KEY: type(criterion).__name__,
+		OPTIMIZER_NAME_KEY: type(optimizer).__name__,
+		OPTIMIZER_LR_KEY: optimizer.defaults["lr"],
+		OPTIMIZER_MOMENTUM_KEY: try_or_else(lambda: optimizer.defaults["momentum"], "-"),
+		BASE_MODEL_NAME_KEY: m_name,
+		SCHEDULER_NAME_KEY: type(scheduler).__name__,
+		SCHEDULER_STEP_SIZE_KEY: try_or_else(lambda: scheduler.step_size, "-"),
+		SCHEDULER_GAMMA_KEY: try_or_else(lambda: scheduler.gamma, "-"),
+		T_DELTA_KEY: str(t_delta),
+		N_SAMPLES_TRAIN_KEY: len_train_ds,
+		N_SAMPLES_TEST_KEY: len_test_ds,
+		N_CORRECT_TRAIN_KEY: running_corrects_train.item(),
+		N_CORRECT_TEST_KEY: running_corrects_val.item(),
+		CONFUSION_MATRIX_TRAIN_KEY: train_conf_matrix,
+		CONFUSION_MATRIX_TEST_KEY: val_conf_matrix
 	}
 
 
@@ -306,10 +336,8 @@ def main() -> None:
 
 	episodes = list(product(model_initializers, optimizers, schedulers))[last_episode + 1:]
 
-	learn_out_file = f"{LEARN_OUT_PATH}/{datetime.now().strftime("%Y-%m-%d-%H-%M-%S")}.csv"
+	learn_out_file = f"{LEARN_OUT_PATH}/{datetime.now().strftime("%Y-%m-%d-%H-%M-%S")}.txt"
 	with open(learn_out_file, "w") as f_out:
-		f_out.write(",".join(CSV_HEADERS))
-		f_out.write("\n")
 
 		for model_f, optim_f, schedul_f in episodes:
 			start = datetime.now()
@@ -322,12 +350,7 @@ def main() -> None:
 			train_ds = train_dataloader.dataset
 			test_ds = test_dataloader.dataset
 
-			weights = class_weight.compute_class_weight(class_weight="balanced", classes=np.array(train_ds.get_labels()), y=train_ds.get_all_int_labels())
-			weights = torch.tensor(weights, dtype=torch.float)
-			weights = weights.to(device)
-
 			criterion = nn.BCEWithLogitsLoss()
-			weighted_criterion = nn.BCEWithLogitsLoss(weight=weights, reduction='mean')
 
 			optimizer = optim_f(model.parameters())
 			scheduler = schedul_f(optimizer, EPOCHS)
@@ -347,19 +370,17 @@ def main() -> None:
 				epoch_acc_train = -1.0
 				epoch_loss_train = -1.0
 				n_batches = len(train_dataloader)
+				train_conf_matrix: dict[(float, float), dict] = dict()
 				i_batch = 1
 				print(f"Train - {n_batches} batches")
 				for inputs, labels in train_dataloader:
 					inputs = inputs.to(device)
-					labels = labels.to(device)
+					labels = labels.float().to(device)
 					optimizer.zero_grad(set_to_none=True)
-					outputs = model(inputs)
+					outputs = torch.squeeze(model(inputs)) # squeezing is ok in binary classification
 					preds = torch.sigmoid(outputs).round()
-					loss = weighted_criterion(outputs, labels)
-					# TODO: running matrix
-					print(preds)
-					print(labels.data)
-					exit()
+					loss = criterion(outputs, labels)
+					update_confusion_matrix(train_conf_matrix, labels.data, preds)
 					running_corrects_train += torch.sum(preds == labels.data)
 					running_loss_train += loss.item() * inputs.size(0)
 					loss.backward()
@@ -378,17 +399,19 @@ def main() -> None:
 					epoch_acc_val = -1.0
 					epoch_loss_val = -1.0
 					n_batches = len(test_dataloader)
+					val_conf_matrix: dict[(float, float), dict] = dict()
 					i_batch = 1
 					print(f"Validate - {n_batches} batches")
 					for inputs, labels in test_dataloader:
 						inputs = inputs.to(device)
-						labels = labels.to(device)
+						labels = labels.float().to(device)
 						# optimizer.zero_grad()
-						outputs = model(inputs)
+						outputs = torch.squeeze(model(inputs))
 						preds = torch.sigmoid(outputs).round()
 						loss = criterion(outputs, labels)
-						running_loss_val += loss.item() * inputs.size(0)
+						update_confusion_matrix(val_conf_matrix, labels.data, preds)
 						running_corrects_val += torch.sum(preds == labels.data)
+						running_loss_val += loss.item() * inputs.size(0)
 						if i_batch % LOG_EVERY_BATCHES_AMOUNT == 0:
 							print(f"{str(datetime.now().strftime('%Y-%m-%d %H:%M:%S'))} > {i_batch} / {n_batches}")
 						i_batch = i_batch + 1
@@ -404,6 +427,7 @@ def main() -> None:
 						epoch_acc_val,
 						epoch_loss_val,
 						epoch + 1,
+						BATCH_SIZE,
 						criterion,
 						optimizer,
 						m_name,
@@ -412,15 +436,22 @@ def main() -> None:
 						len(train_ds),
 						len(test_ds),
 						running_corrects_train,
-						running_corrects_val
+						running_corrects_val,
+						train_conf_matrix,
+						val_conf_matrix
 					)
-					print(model_data)
-					f_out.write(",".join(map(lambda header: str(model_data[header]), CSV_HEADERS)))
+					out_data = json.dumps(model_data)
+					print(out_data)
+					f_out.write(out_data)
 					f_out.write("\n")
 					f_out.flush()
 
 					with open(LAST_EPOCH_DONE_FILE, "w") as f_lep:
 						f_lep.write(str(epoch))
+
+					with open(LAST_EPISODE_DONE_FILE, "w") as f_le:
+						last_episode += 1
+						f_le.write(str(last_episode))
 
 
 if __name__ == "__main__":
