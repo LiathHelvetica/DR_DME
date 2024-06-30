@@ -3,7 +3,7 @@ import numpy as np
 
 from nptyping import NDArray, Shape
 
-from constants import IMG_CROPPER_THRESHOLD
+from constants import IMG_CROPPER_THRESHOLD, AUGMENTATION_NAME_SEPARATOR
 
 
 def img_to_square(path: str, threshold: int = IMG_CROPPER_THRESHOLD) -> NDArray[Shape["*, *, 3"], np.uint8]:
@@ -39,3 +39,7 @@ def img_to_square(path: str, threshold: int = IMG_CROPPER_THRESHOLD) -> NDArray[
   )
 
   return img_out
+
+
+def get_id_from_f_name(f_name: str) -> str:
+  return f_name.split(AUGMENTATION_NAME_SEPARATOR)[-1].split(".")[0]
