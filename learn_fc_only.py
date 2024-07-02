@@ -491,7 +491,7 @@ def main() -> None:
 					len(plain_ds),
 					running_corrects_train,
 					running_corrects_val,
-					running_loss_plain,
+					running_corrects_plain,
 					train_conf_matrix,
 					val_conf_matrix,
 					plain_conf_matrix
