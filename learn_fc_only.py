@@ -85,8 +85,8 @@ def get_model_data(
 		N_SAMPLES_TEST_KEY: len_test_ds,
 		N_CORRECT_TRAIN_KEY: running_corrects_train.item(),
 		N_CORRECT_TEST_KEY: running_corrects_val.item(),
-		CONFUSION_MATRIX_TRAIN_KEY: train_conf_matrix,
-		CONFUSION_MATRIX_TEST_KEY: val_conf_matrix
+		CONFUSION_MATRIX_TRAIN_KEY: list(train_conf_matrix.values()),
+		CONFUSION_MATRIX_TEST_KEY: list(val_conf_matrix.values())
 	}
 
 
@@ -310,11 +310,11 @@ def main() -> None:
 	optimizers = [
 		lambda params: optim.SGD(params, lr=0.001, momentum=0.9),
 		# lambda params: optim.SGD(params, lr=0.01, momentum=0.9),
-		##### alt # lambda params: optim.Adam(params, lr=0.001),
+		lambda params: optim.Adam(params, lr=0.001),
 		# lambda params: optim.Adam(params, lr=0.01),
 		lambda params: optim.Adagrad(params, lr=0.01),
 		# lambda params: optim.Adagrad(params, lr=0.1),
-		# lambda params: optim.RMSprop(params, lr=0.01),
+		lambda params: optim.RMSprop(params, lr=0.001)
 		# lambda params: optim.RMSprop(params, lr=0.1),
 		# lambda params: optim.RMSprop(params, lr=0.01, momentum=0.1),
 		##### lambda params: optim.Adadelta(params)
@@ -446,12 +446,12 @@ def main() -> None:
 					f_out.write("\n")
 					f_out.flush()
 
-					with open(LAST_EPOCH_DONE_FILE, "w") as f_lep:
-						f_lep.write(str(epoch))
+				with open(LAST_EPOCH_DONE_FILE, "w") as f_lep:
+					f_lep.write(str(epoch))
 
-					with open(LAST_EPISODE_DONE_FILE, "w") as f_le:
-						last_episode += 1
-						f_le.write(str(last_episode))
+			with open(LAST_EPISODE_DONE_FILE, "w") as f_le:
+				last_episode += 1
+				f_le.write(str(last_episode))
 
 
 if __name__ == "__main__":
