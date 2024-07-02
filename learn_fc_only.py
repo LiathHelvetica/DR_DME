@@ -13,7 +13,7 @@ from sklearn.model_selection import train_test_split
 
 from itertools import product
 
-from constants import AUGMENTATION_OUT_PATH, COMBINED_LABEL_PATH, DME_LABEL, ID_LABEL, TEST_SPLIT_VALUE, TRAIN_DATASET_LABEL, TEST_DATASET_LABEL, LEARN_OUT_PATH, LAST_EPISODE_DONE_FILE, BATCH_SIZE, EPOCHS, LOG_EVERY_BATCHES_AMOUNT, MODEL_CHECKPOINT_OUT_PATH, LAST_EPOCH_DONE_FILE, CONFUSION_MATRIX_ORIGINAL_VALUE_LABEL, CONFUSION_MATRIX_PREDICTION_VALUE_LABEL, CONFUSION_MATRIX_COUNT_LABEL, TRAIN_ACC_KEY, TRAIN_LOSS_KEY, TEST_ACC_KEY, TEST_LOSS_KEY, EPOCH_KEY, BATCH_SIZE_KEY, CRITERION_KEY, OPTIMIZER_NAME_KEY, OPTIMIZER_LR_KEY, OPTIMIZER_MOMENTUM_KEY, BASE_MODEL_NAME_KEY, SCHEDULER_NAME_KEY, SCHEDULER_STEP_SIZE_KEY, SCHEDULER_GAMMA_KEY, T_DELTA_KEY, N_SAMPLES_TRAIN_KEY, N_SAMPLES_TEST_KEY, N_CORRECT_TRAIN_KEY, N_CORRECT_TEST_KEY, CONFUSION_MATRIX_TRAIN_KEY, CONFUSION_MATRIX_TEST_KEY
+from constants import AUGMENTATION_OUT_PATH, COMBINED_LABEL_PATH, DME_LABEL, ID_LABEL, TEST_SPLIT_VALUE, TRAIN_DATASET_LABEL, TEST_DATASET_LABEL, LEARN_OUT_PATH, LAST_EPISODE_DONE_FILE, BATCH_SIZE, EPOCHS, LOG_EVERY_BATCHES_AMOUNT, MODEL_CHECKPOINT_OUT_PATH, LAST_EPOCH_DONE_FILE, CONFUSION_MATRIX_ORIGINAL_VALUE_LABEL, CONFUSION_MATRIX_PREDICTION_VALUE_LABEL, CONFUSION_MATRIX_COUNT_LABEL, TRAIN_ACC_KEY, TRAIN_LOSS_KEY, TEST_ACC_KEY, TEST_LOSS_KEY, EPOCH_KEY, BATCH_SIZE_KEY, CRITERION_KEY, OPTIMIZER_NAME_KEY, OPTIMIZER_LR_KEY, OPTIMIZER_MOMENTUM_KEY, BASE_MODEL_NAME_KEY, SCHEDULER_NAME_KEY, SCHEDULER_STEP_SIZE_KEY, SCHEDULER_GAMMA_KEY, T_DELTA_KEY, N_SAMPLES_TRAIN_KEY, N_SAMPLES_TEST_KEY, N_CORRECT_TRAIN_KEY, N_CORRECT_TEST_KEY, CONFUSION_MATRIX_TRAIN_KEY, CONFUSION_MATRIX_TEST_KEY, AUGMENTATION_PLAIN_OUT_PATH, PLAIN_DATASET_LABEL, PLAIN_ACC_KEY, PLAIN_LOSS_KEY, N_SAMPLES_PLAIN_KEY, N_CORRECT_PLAIN_KEY, CONFUSION_MATRIX_PLAIN_KEY
 from fundus_dataset import FundusImageDataset
 from img_util import get_id_from_f_name
 from no_op_scheduler import NoOpScheduler
@@ -51,6 +51,8 @@ def get_model_data(
 	epoch_loss_train,
 	epoch_acc_val,
 	epoch_loss_val,
+	epoch_acc_plain,
+	epoch_loss_plain,
 	epoch,
 	batch_size,
 	criterion,
@@ -60,16 +62,21 @@ def get_model_data(
 	t_delta,
 	len_train_ds,
 	len_test_ds,
+	len_plain_ds,
 	running_corrects_train,
 	running_corrects_val,
+	running_corrects_plain,
 	train_conf_matrix,
-	val_conf_matrix
+	val_conf_matrix,
+	plain_conf_matrix
 ) -> dict:
 	return {
 		TRAIN_ACC_KEY: epoch_acc_train.item(),
 		TRAIN_LOSS_KEY: epoch_loss_train,
 		TEST_ACC_KEY: epoch_acc_val.item(),
 		TEST_LOSS_KEY: epoch_loss_val,
+		PLAIN_ACC_KEY: epoch_acc_plain.item(),
+		PLAIN_LOSS_KEY: epoch_loss_plain,
 		EPOCH_KEY: epoch,
 		BATCH_SIZE_KEY: batch_size,
 		CRITERION_KEY: type(criterion).__name__,
@@ -83,10 +90,13 @@ def get_model_data(
 		T_DELTA_KEY: str(t_delta),
 		N_SAMPLES_TRAIN_KEY: len_train_ds,
 		N_SAMPLES_TEST_KEY: len_test_ds,
+		N_SAMPLES_PLAIN_KEY: len_plain_ds,
 		N_CORRECT_TRAIN_KEY: running_corrects_train.item(),
 		N_CORRECT_TEST_KEY: running_corrects_val.item(),
+		N_CORRECT_PLAIN_KEY: running_corrects_plain.item(),
 		CONFUSION_MATRIX_TRAIN_KEY: list(train_conf_matrix.values()),
-		CONFUSION_MATRIX_TEST_KEY: list(val_conf_matrix.values())
+		CONFUSION_MATRIX_TEST_KEY: list(val_conf_matrix.values()),
+		CONFUSION_MATRIX_PLAIN_KEY: list(plain_conf_matrix.values())
 	}
 
 
@@ -138,10 +148,11 @@ def model_last_layer_head(f_model_create, device, n_outputs, x, y, m_name):
 
 
 IN_PATH_PREFIX = AUGMENTATION_OUT_PATH
+IN_PLAIN_PATH_PREFIX = AUGMENTATION_PLAIN_OUT_PATH
 LABELS_PATH = COMBINED_LABEL_PATH
 
 
-def get_dataset_for_size(in_size: int, label_df: DataFrame) -> (FundusImageDataset, FundusImageDataset):
+def get_dataset_for_size(in_size: int, label_df: DataFrame) -> (FundusImageDataset, FundusImageDataset, FundusImageDataset):
 	in_path = f"{IN_PATH_PREFIX}_{in_size}"
 	img_list = os.listdir(in_path)
 	dme_ok = label_df[label_df[DME_LABEL] == 0][ID_LABEL].to_list()
@@ -152,6 +163,10 @@ def get_dataset_for_size(in_size: int, label_df: DataFrame) -> (FundusImageDatas
 	dme_id_test = set(dme_ok_id_test + dme_bad_id_test)
 	train_imgs = list(filter(lambda img: get_id_from_f_name(img) in dme_id_train, img_list))
 	test_imgs = list(filter(lambda img: get_id_from_f_name(img) in dme_id_test, img_list))
+
+	plain_in_path = f"{IN_PLAIN_PATH_PREFIX}_{in_size}"
+	img_list = os.listdir(plain_in_path)
+	plain_imgs = list(filter(lambda img: get_id_from_f_name(img) in dme_id_test, img_list))
 
 	train_ds = FundusImageDataset(
 		in_path,
@@ -167,19 +182,27 @@ def get_dataset_for_size(in_size: int, label_df: DataFrame) -> (FundusImageDatas
 		DME_LABEL
 	)
 
-	return train_ds, test_ds
+	plain_ds = FundusImageDataset(
+		plain_in_path,
+		plain_imgs,
+		label_df,
+		DME_LABEL
+	)
+
+	return train_ds, test_ds, plain_ds
 
 
 def get_datasets_dict(in_size: int, label_df: DataFrame) -> dict[str, FundusImageDataset]:
-	train_ds, test_ds = get_dataset_for_size(in_size, label_df)
-	return {TRAIN_DATASET_LABEL: train_ds, TEST_DATASET_LABEL: test_ds}
+	train_ds, test_ds, plain_ds = get_dataset_for_size(in_size, label_df)
+	return {TRAIN_DATASET_LABEL: train_ds, TEST_DATASET_LABEL: test_ds, PLAIN_DATASET_LABEL: plain_ds}
 
 
 def get_dataloader(in_size: int, label_df: DataFrame) -> dict[str, DataLoader]:
-	train_ds, test_ds = get_dataset_for_size(in_size, label_df)
+	train_ds, test_ds, plain_ds = get_dataset_for_size(in_size, label_df)
 	return {
 		TRAIN_DATASET_LABEL: DataLoader(train_ds, batch_size=BATCH_SIZE, shuffle=True),
-		TEST_DATASET_LABEL: DataLoader(test_ds, batch_size=BATCH_SIZE, shuffle=True)
+		TEST_DATASET_LABEL: DataLoader(test_ds, batch_size=BATCH_SIZE, shuffle=False),
+		PLAIN_DATASET_LABEL: DataLoader(plain_ds, batch_size=BATCH_SIZE, shuffle=False)
 	}
 
 
@@ -347,8 +370,10 @@ def main() -> None:
 			dataloader_dict = dataloaders[x_size]
 			train_dataloader = dataloader_dict[TRAIN_DATASET_LABEL]
 			test_dataloader = dataloader_dict[TEST_DATASET_LABEL]
+			plain_dataloader = dataloader_dict[PLAIN_DATASET_LABEL]
 			train_ds = train_dataloader.dataset
 			test_ds = test_dataloader.dataset
+			plain_ds = plain_dataloader.dataset
 
 			criterion = nn.BCEWithLogitsLoss()
 
@@ -418,33 +443,64 @@ def main() -> None:
 					epoch_loss_val = running_loss_val / len(test_ds)
 					epoch_acc_val = running_corrects_val / len(test_ds)
 
-					torch.save(model.state_dict(), MODEL_CHECKPOINT_OUT_PATH)
-					stop = datetime.now()
+				with torch.no_grad():
+					model.eval()
+					running_loss_plain = 0.0
+					running_corrects_plain = 0
+					epoch_acc_plain = -1.0
+					epoch_loss_plain = -1.0
+					n_batches = len(plain_dataloader)
+					plain_conf_matrix: dict[(float, float), dict] = dict()
+					i_batch = 1
+					print(f"Plain - {n_batches} batches")
+					for inputs, labels in plain_dataloader:
+						inputs = inputs.to(device)
+						labels = labels.float().to(device)
+						# optimizer.zero_grad()
+						outputs = torch.squeeze(model(inputs))
+						preds = torch.sigmoid(outputs).round()
+						loss = criterion(outputs, labels)
+						update_confusion_matrix(plain_conf_matrix, labels.data, preds)
+						running_corrects_plain += torch.sum(preds == labels.data)
+						running_loss_plain += loss.item() * inputs.size(0)
+						if i_batch % LOG_EVERY_BATCHES_AMOUNT == 0:
+							print(f"{str(datetime.now().strftime('%Y-%m-%d %H:%M:%S'))} > {i_batch} / {n_batches}")
+						i_batch = i_batch + 1
+					epoch_loss_plain = running_loss_plain / len(plain_ds)
+					epoch_acc_plain = running_corrects_plain / len(plain_ds)
 
-					model_data = get_model_data(
-						epoch_acc_train,
-						epoch_loss_train,
-						epoch_acc_val,
-						epoch_loss_val,
-						epoch + 1,
-						BATCH_SIZE,
-						criterion,
-						optimizer,
-						m_name,
-						scheduler,
-						stop - start,
-						len(train_ds),
-						len(test_ds),
-						running_corrects_train,
-						running_corrects_val,
-						train_conf_matrix,
-						val_conf_matrix
-					)
-					out_data = json.dumps(model_data)
-					print(out_data)
-					f_out.write(out_data)
-					f_out.write("\n")
-					f_out.flush()
+				torch.save(model.state_dict(), MODEL_CHECKPOINT_OUT_PATH)
+				stop = datetime.now()
+
+				model_data = get_model_data(
+					epoch_acc_train,
+					epoch_loss_train,
+					epoch_acc_val,
+					epoch_loss_val,
+					epoch_acc_plain,
+					epoch_loss_plain,
+					epoch + 1,
+					BATCH_SIZE,
+					criterion,
+					optimizer,
+					m_name,
+					scheduler,
+					stop - start,
+					len(train_ds),
+					len(test_ds),
+					len(plain_ds),
+					running_corrects_train,
+					running_corrects_val,
+					running_loss_plain,
+					train_conf_matrix,
+					val_conf_matrix,
+					plain_conf_matrix
+				)
+				out_data = json.dumps(model_data)
+				print(out_data)
+				f_out.write(out_data)
+				f_out.write("\n")
+				f_out.flush()
 
 				with open(LAST_EPOCH_DONE_FILE, "w") as f_lep:
 					f_lep.write(str(epoch))
