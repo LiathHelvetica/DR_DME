@@ -109,6 +109,16 @@ def model_last_layer_fc(f_model_create, device, n_outputs, x, y, m_name):
 	return op
 
 
+def inception(f_model_create, device, n_outputs, x, y, m_name):
+	def op():
+		model = f_model_create()
+		model.fc = nn.Linear(model.fc.in_features, n_outputs)
+		model.AuxLogits.fc = nn.Linear(model.AuxLogits.fc.in_features, n_outputs)
+		model.to(device)
+		return model, x, y, m_name
+	return op
+
+
 def model_last_layer_sequential_classifier(f_model_create, device, n_outputs, x, y, m_name):
 	def op():
 		model = f_model_create()
@@ -223,7 +233,7 @@ def main() -> None:
 		model_last_layer_fc(lambda: models.resnet152(weights=models.ResNet152_Weights.IMAGENET1K_V1), device, 1, 224, 224, "resnet152"),
 		model_last_layer_fc(lambda: models.resnet152(weights=models.ResNet152_Weights.IMAGENET1K_V2), device, 1, 232, 232, "resnet152"),
 		model_last_layer_fc(lambda: models.googlenet(weights=models.GoogLeNet_Weights.IMAGENET1K_V1), device, 1, 224, 224, "googlenet"),
-		model_last_layer_fc(lambda: models.inception_v3(weights=models.Inception_V3_Weights.IMAGENET1K_V1), device, 1, 342, 342, "inception_v3"),
+		inception(lambda: models.inception_v3(weights=models.Inception_V3_Weights.IMAGENET1K_V1, aux_logits=True), device, 1, 342, 342, "inception_v3"),
 		model_last_layer_fc(lambda: models.regnet_y_400mf(weights=models.RegNet_Y_400MF_Weights.IMAGENET1K_V1), device, 1, 224, 224, "regnet_y_400mf"),
 		model_last_layer_fc(lambda: models.regnet_y_400mf(weights=models.RegNet_Y_400MF_Weights.IMAGENET1K_V2), device, 1, 232, 232, "regnet_y_400mf"),
 		model_last_layer_fc(lambda: models.regnet_y_800mf(weights=models.RegNet_Y_800MF_Weights.IMAGENET1K_V1), device, 1, 224, 224, "regnet_y_800mf"),
@@ -402,9 +412,15 @@ def main() -> None:
 					inputs = inputs.to(device)
 					labels = labels.float().to(device)
 					optimizer.zero_grad(set_to_none=True)
-					outputs = torch.squeeze(model(inputs)) # squeezing is ok in binary classification
+					if m_name == "inception_v3":
+						outputs, aux_outputs = model(inputs)
+						outputs = torch.squeeze(outputs)
+						aux_outputs = torch.squeeze(aux_outputs)
+						loss = criterion(outputs, labels) + criterion(aux_outputs, labels) * 0.3
+					else:
+						outputs = torch.squeeze(model(inputs)) # squeezing is ok in binary classification
+						loss = criterion(outputs, labels)
 					preds = torch.sigmoid(outputs).round()
-					loss = criterion(outputs, labels)
 					update_confusion_matrix(train_conf_matrix, labels.data, preds)
 					running_corrects_train += torch.sum(preds == labels.data)
 					running_loss_train += loss.item() * inputs.size(0)
@@ -431,9 +447,14 @@ def main() -> None:
 						inputs = inputs.to(device)
 						labels = labels.float().to(device)
 						# optimizer.zero_grad()
-						outputs = torch.squeeze(model(inputs))
+						if m_name == "inception_v3":
+							outputs, _ = model(inputs)
+							outputs = torch.squeeze(outputs)
+							loss = criterion(outputs, labels)
+						else:
+							outputs = torch.squeeze(model(inputs)) # squeezing is ok in binary classification
+							loss = criterion(outputs, labels)
 						preds = torch.sigmoid(outputs).round()
-						loss = criterion(outputs, labels)
 						update_confusion_matrix(val_conf_matrix, labels.data, preds)
 						running_corrects_val += torch.sum(preds == labels.data)
 						running_loss_val += loss.item() * inputs.size(0)
@@ -457,9 +478,14 @@ def main() -> None:
 						inputs = inputs.to(device)
 						labels = labels.float().to(device)
 						# optimizer.zero_grad()
-						outputs = torch.squeeze(model(inputs))
+						if m_name == "inception_v3":
+							outputs, _ = model(inputs)
+							outputs = torch.squeeze(outputs)
+							loss = criterion(outputs, labels)
+						else:
+							outputs = torch.squeeze(model(inputs)) # squeezing is ok in binary classification
+							loss = criterion(outputs, labels)
 						preds = torch.sigmoid(outputs).round()
-						loss = criterion(outputs, labels)
 						update_confusion_matrix(plain_conf_matrix, labels.data, preds)
 						running_corrects_plain += torch.sum(preds == labels.data)
 						running_loss_plain += loss.item() * inputs.size(0)
