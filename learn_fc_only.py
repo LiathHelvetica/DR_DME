@@ -252,8 +252,6 @@ def main() -> None:
 		model_last_layer_fc(lambda: models.regnet_y_32gf(weights=models.RegNet_Y_32GF_Weights.IMAGENET1K_V2), device, 1, 232, 232, "regnet_y_32gf"),
 		model_last_layer_fc(lambda: models.regnet_y_32gf(weights=models.RegNet_Y_32GF_Weights.IMAGENET1K_SWAG_LINEAR_V1), device, 1, 224, 224, "regnet_y_32gf"),
 		model_last_layer_fc(lambda: models.regnet_y_32gf(weights=models.RegNet_Y_32GF_Weights.IMAGENET1K_SWAG_E2E_V1), device, 1, 384, 384, "regnet_y_32gf"),
-		model_last_layer_fc(lambda: models.regnet_y_128gf(weights=models.RegNet_Y_128GF_Weights.IMAGENET1K_SWAG_E2E_V1), device, 1, 384, 384, "regnet_y_128gf"),
-		model_last_layer_fc(lambda: models.regnet_y_128gf(weights=models.RegNet_Y_128GF_Weights.IMAGENET1K_SWAG_LINEAR_V1), device, 1, 224, 224, "regnet_y_128gf"),
 		model_last_layer_fc(lambda: models.regnet_x_400mf(weights=models.RegNet_X_400MF_Weights.IMAGENET1K_V1), device, 1, 224, 224, "regnet_x_400mf"),
 		model_last_layer_fc(lambda: models.regnet_x_400mf(weights=models.RegNet_X_400MF_Weights.IMAGENET1K_V2), device, 1, 232, 232, "regnet_x_400mf"),
 		model_last_layer_fc(lambda: models.regnet_x_800mf(weights=models.RegNet_X_800MF_Weights.IMAGENET1K_V1), device, 1, 224, 224, "regnet_x_800mf"),
@@ -264,10 +262,6 @@ def main() -> None:
 		model_last_layer_fc(lambda: models.regnet_x_3_2gf(weights=models.RegNet_X_3_2GF_Weights.IMAGENET1K_V2), device, 1, 232, 232, "regnet_x_3_2gf"),
 		model_last_layer_fc(lambda: models.regnet_x_8gf(weights=models.RegNet_X_8GF_Weights.IMAGENET1K_V1), device, 1, 224, 224, "regnet_x_8gf"),
 		model_last_layer_fc(lambda: models.regnet_x_8gf(weights=models.RegNet_X_8GF_Weights.IMAGENET1K_V2), device, 1, 232, 232, "regnet_x_8gf"),
-		model_last_layer_fc(lambda: models.regnet_x_16gf(weights=models.RegNet_X_16GF_Weights.IMAGENET1K_V1), device, 1, 224, 224, "regnet_x_16gf"),
-		model_last_layer_fc(lambda: models.regnet_x_16gf(weights=models.RegNet_X_16GF_Weights.IMAGENET1K_V2), device, 1, 232, 232, "regnet_x_16gf"),
-		model_last_layer_fc(lambda: models.regnet_x_32gf(weights=models.RegNet_X_32GF_Weights.IMAGENET1K_V1), device, 1, 224, 224, "regnet_x_32gf"),
-		model_last_layer_fc(lambda: models.regnet_x_32gf(weights=models.RegNet_X_32GF_Weights.IMAGENET1K_V2), device, 1, 232, 232, "regnet_x_32gf"),
 		model_last_layer_fc(lambda: models.resnext50_32x4d(weights=models.ResNeXt50_32X4D_Weights.IMAGENET1K_V1), device, 1, 224, 224, "resnext50_32x4d"),
 		model_last_layer_fc(lambda: models.resnext50_32x4d(weights=models.ResNeXt50_32X4D_Weights.IMAGENET1K_V2), device, 1, 232, 232, "resnext50_32x4d"),
 		model_last_layer_fc(lambda: models.resnext101_32x8d(weights=models.ResNeXt101_32X8D_Weights.IMAGENET1K_V1), device, 1, 224, 224, "resnext101_32x8d"),
@@ -338,7 +332,14 @@ def main() -> None:
 		model_last_layer_head(lambda: models.swin_s(weights=models.Swin_S_Weights.IMAGENET1K_V1), device, 1, 246, 246, "swin_s"),
 		model_last_layer_head(lambda: models.swin_v2_b(weights=models.Swin_V2_B_Weights.IMAGENET1K_V1), device, 1, 272, 272, "swin_v2_b"),
 		model_last_layer_head(lambda: models.swin_v2_t(weights=models.Swin_V2_T_Weights.IMAGENET1K_V1), device, 1, 260, 260, "swin_v2_t"),
-		model_last_layer_head(lambda: models.swin_v2_s(weights=models.Swin_V2_S_Weights.IMAGENET1K_V1), device, 1, 260, 260, "swin_v2_s")
+		model_last_layer_head(lambda: models.swin_v2_s(weights=models.Swin_V2_S_Weights.IMAGENET1K_V1), device, 1, 260, 260, "swin_v2_s"),
+		####
+		model_last_layer_fc(lambda: models.regnet_y_128gf(weights=models.RegNet_Y_128GF_Weights.IMAGENET1K_SWAG_E2E_V1), device, 1, 384, 384, "regnet_y_128gf"),
+		model_last_layer_fc(lambda: models.regnet_y_128gf(weights=models.RegNet_Y_128GF_Weights.IMAGENET1K_SWAG_LINEAR_V1), device, 1, 224, 224, "regnet_y_128gf"),
+		model_last_layer_fc(lambda: models.regnet_x_16gf(weights=models.RegNet_X_16GF_Weights.IMAGENET1K_V1), device, 1, 224, 224, "regnet_x_16gf"),
+		model_last_layer_fc(lambda: models.regnet_x_16gf(weights=models.RegNet_X_16GF_Weights.IMAGENET1K_V2), device, 1, 232, 232, "regnet_x_16gf"),
+		model_last_layer_fc(lambda: models.regnet_x_32gf(weights=models.RegNet_X_32GF_Weights.IMAGENET1K_V1), device, 1, 224, 224, "regnet_x_32gf"),
+		model_last_layer_fc(lambda: models.regnet_x_32gf(weights=models.RegNet_X_32GF_Weights.IMAGENET1K_V2), device, 1, 232, 232, "regnet_x_32gf")
 	]
 	optimizers = [
 		lambda params: optim.SGD(params, lr=0.001, momentum=0.9),
@@ -375,6 +376,7 @@ def main() -> None:
 		for model_f, optim_f, schedul_f in episodes:
 			start = datetime.now()
 			model, x_size, y_size, m_name = model_f()
+			print(f"Using: {m_name}")
 			model = model.to(device)
 
 			dataloader_dict = dataloaders[x_size]
@@ -447,13 +449,8 @@ def main() -> None:
 						inputs = inputs.to(device)
 						labels = labels.float().to(device)
 						# optimizer.zero_grad()
-						if m_name == "inception_v3":
-							outputs, _ = model(inputs)
-							outputs = torch.squeeze(outputs)
-							loss = criterion(outputs, labels)
-						else:
-							outputs = torch.squeeze(model(inputs)) # squeezing is ok in binary classification
-							loss = criterion(outputs, labels)
+						outputs = torch.squeeze(model(inputs)) # squeezing is ok in binary classification
+						loss = criterion(outputs, labels)
 						preds = torch.sigmoid(outputs).round()
 						update_confusion_matrix(val_conf_matrix, labels.data, preds)
 						running_corrects_val += torch.sum(preds == labels.data)
@@ -478,13 +475,8 @@ def main() -> None:
 						inputs = inputs.to(device)
 						labels = labels.float().to(device)
 						# optimizer.zero_grad()
-						if m_name == "inception_v3":
-							outputs, _ = model(inputs)
-							outputs = torch.squeeze(outputs)
-							loss = criterion(outputs, labels)
-						else:
-							outputs = torch.squeeze(model(inputs)) # squeezing is ok in binary classification
-							loss = criterion(outputs, labels)
+						outputs = torch.squeeze(model(inputs)) # squeezing is ok in binary classification
+						loss = criterion(outputs, labels)
 						preds = torch.sigmoid(outputs).round()
 						update_confusion_matrix(plain_conf_matrix, labels.data, preds)
 						running_corrects_plain += torch.sum(preds == labels.data)
