@@ -335,6 +335,7 @@ def main() -> None:
 
 					# TODO: model should be reset in each fold
 					# TODO: break if train is > 0.99
+					# TODO: modify initial layers for grayscale
 
 					print(f"> Fold {fold + 1}")
 

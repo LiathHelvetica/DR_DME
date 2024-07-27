@@ -58,3 +58,9 @@ def crop_circle_from_img(img: NDArray[Shape["*, *, 3"], np.uint8]) -> NDArray[Sh
 	mask = np.zeros(img.shape, dtype=np.uint8)
 	cv2.circle(mask, (x_c, y_c), max(x_c, y_c), (999, 999, 999), -1)
 	return cv2.min(img, mask)
+
+
+def get_extract_channel_transform(channel: int):
+	def out(img: NDArray[Shape["*, *, 3"], np.uint8]) -> NDArray[Shape["*, *, 1"], np.uint8]:
+		return img[:, :, channel]
+	return out
