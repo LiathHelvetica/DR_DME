@@ -2,7 +2,7 @@ import copy
 import os
 from datetime import datetime
 import json
-
+import statistics as stat
 import torch
 import torch.nn as nn
 import torch.optim as optim
@@ -21,7 +21,8 @@ from constants import AUGMENTATION_OUT_PATH, COMBINED_LABEL_PATH, DME_LABEL, ID_
 	SCHEDULER_STEP_SIZE_KEY, SCHEDULER_GAMMA_KEY, T_DELTA_KEY, N_SAMPLES_TRAIN_KEY, N_SAMPLES_TEST_KEY, N_CORRECT_TRAIN_KEY, N_CORRECT_TEST_KEY, \
 	CONFUSION_MATRIX_TRAIN_KEY, CONFUSION_MATRIX_TEST_KEY, AUGMENTATION_PLAIN_OUT_PATH, PLAIN_DATASET_LABEL, PLAIN_ACC_KEY, PLAIN_LOSS_KEY, N_SAMPLES_PLAIN_KEY, \
 	N_CORRECT_PLAIN_KEY, CONFUSION_MATRIX_PLAIN_KEY, FOLDS, VAL_ACC_KEY, VAL_LOSS_KEY, TOTAL_EPOCHS_KEY, \
-	TOTAL_FOLDS_KEY, N_SAMPLES_TRAIN_AND_VAL_KEY
+	TOTAL_FOLDS_KEY, N_SAMPLES_TRAIN_AND_VAL_KEY, TRAIN_ACC_MEAN_KEY, TRAIN_ACC_STD_DEV_KEY, TRAIN_LOSS_MEAN_KEY, TRAIN_LOSS_STD_DEV_KEY, VAL_ACC_MEAN_KEY, \
+	VAL_ACC_STD_DEV_KEY, VAL_LOSS_MEAN_KEY, VAL_LOSS_STD_DEV_KEY
 from fundus_dataset import FundusImageDataset
 from img_util import get_id_from_f_name
 from no_op_scheduler import NoOpScheduler
@@ -55,10 +56,10 @@ def update_confusion_matrix(d: dict[(float, float), dict], orig_t: Tensor, pred_
 
 
 def get_model_data(
-	fold_acc_train,
-	fold_loss_train,
-	fold_acc_val,
-	fold_loss_val,
+	fold_acc_train_l,
+	fold_loss_train_l,
+	fold_acc_val_l,
+	fold_loss_val_l,
 	loss_test,
 	acc_test,
 	loss_plain,
@@ -79,10 +80,14 @@ def get_model_data(
 	plain_conf_matrix
 ) -> dict:
 	return {
-		TRAIN_ACC_KEY: fold_acc_train,
-		TRAIN_LOSS_KEY: fold_loss_train,
-		VAL_ACC_KEY: fold_acc_val,
-		VAL_LOSS_KEY: fold_loss_val,
+		TRAIN_ACC_MEAN_KEY: stat.mean(fold_acc_train_l),
+		TRAIN_ACC_STD_DEV_KEY: stat.stdev(fold_acc_train_l),
+		TRAIN_LOSS_MEAN_KEY: stat.mean(fold_loss_train_l),
+		TRAIN_LOSS_STD_DEV_KEY: stat.stdev(fold_loss_train_l),
+		VAL_ACC_MEAN_KEY: stat.mean(fold_acc_val_l),
+		VAL_ACC_STD_DEV_KEY: stat.stdev(fold_acc_val_l),
+		VAL_LOSS_MEAN_KEY: stat.mean(fold_loss_val_l),
+		VAL_LOSS_STD_DEV_KEY: stat.stdev(fold_loss_val_l),
 		TEST_ACC_KEY: acc_test,
 		TEST_LOSS_KEY: loss_test,
 		PLAIN_ACC_KEY: acc_plain,
@@ -436,16 +441,10 @@ def main() -> None:
 				best_model_foldwise_acc = None
 				best_model_foldwise_train_conf_mat = None
 				best_model_foldwise_val_conf_mat = None
-				folds_acc_sum_train = 0.0
-				folds_loss_sum_train = 0.0
-				folds_acc_sum_val = 0.0
-				folds_loss_sum_val = 0.0
-				fold_acc_train = 0.0
-				fold_loss_train = 0.0
-				fold_acc_val = 0.0
-				fold_loss_val = 0.0
-
-				# TODO: std dev of val error
+				folds_acc_train_l = []
+				folds_loss_train_l = []
+				folds_acc_val_l = []
+				folds_loss_val_l = []
 
 				initial_model = copy.deepcopy(model)
 
@@ -541,17 +540,12 @@ def main() -> None:
 						best_model_foldwise_train_conf_mat = train_conf_matrix
 						best_model_foldwise_val_conf_mat = val_conf_matrix
 
-					folds_acc_sum_train += acc_train
-					folds_loss_sum_train += loss_train
-					folds_acc_sum_val += acc_val
-					folds_loss_sum_val += loss_val
+					folds_acc_train_l.append(acc_train)
+					folds_loss_train_l.append(loss_train)
+					folds_acc_val_l.append(acc_val)
+					folds_loss_val_l.append(loss_val)
 
 					model = model.to("cpu")
-
-				fold_acc_train = folds_acc_sum_train / FOLDS
-				fold_loss_train = folds_loss_sum_train / FOLDS
-				fold_acc_val = folds_acc_sum_val / FOLDS
-				fold_loss_val = folds_loss_sum_val / FOLDS
 
 				model = best_model_foldwise
 				model.to(device)
@@ -611,10 +605,10 @@ def main() -> None:
 				stop = datetime.now()
 
 				model_data = get_model_data(
-					fold_acc_train,
-					fold_loss_train,
-					fold_acc_val,
-					fold_loss_val,
+					folds_acc_train_l,
+					folds_loss_train_l,
+					folds_acc_val_l,
+					folds_loss_val_l,
 					loss_test,
 					acc_test,
 					loss_plain,
@@ -640,7 +634,7 @@ def main() -> None:
 				f_out.write("\n")
 				f_out.flush()
 
-				if fold_acc_train >= 0.99:
+				if stat.mean(folds_acc_train_l) >= 0.99:
 					break
 
 			with open(LAST_EPISODE_DONE_FILE, "w") as f_le:
