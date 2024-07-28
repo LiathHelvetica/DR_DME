@@ -1,6 +1,6 @@
 from pandas import read_csv, DataFrame
 from torch.utils.data import Dataset
-from torchvision.io import read_image
+from torchvision.io import read_image, ImageReadMode
 from torch import Tensor
 import torchvision.transforms.functional as tft
 
@@ -16,13 +16,15 @@ class FundusImageDataset(Dataset):
 		img_path: str,
 		img_list: list[str],
 		label_df: DataFrame,
-		score_column: str
+		score_column: str,
+		is_grayscale: bool = False
 	):
 		self.img_path: str = img_path
 		self.img_list: list[str] = img_list
 		self.label_df = label_df
 		self.score_column: str = score_column
 		self.unique_score_count: int = self.label_df[score_column].nunique()
+		self.is_grayscale = is_grayscale
 
 	def count_class_representation(self) -> dict[str, int]:
 		acc: dict[str, int] = dict()
@@ -52,5 +54,8 @@ class FundusImageDataset(Dataset):
 		id = get_id_from_f_name(f_name)
 		data = read_image(f"{self.img_path}/{f_name}")
 		data = data / 255.0
-		tft.normalize(data, mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225], inplace=True)
+		if not self.is_grayscale:
+			tft.normalize(data, mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225], inplace=True)
+		else:
+			tft.normalize(data, mean=[0.239, 0.239, 0.239], std=[0.154, 0.154, 0.154], inplace=True)
 		return data, self.get_label_by_id(id)

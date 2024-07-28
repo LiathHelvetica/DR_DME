@@ -4,6 +4,7 @@ from datetime import datetime
 import json
 import statistics as stat
 import torch
+import numpy as np
 import torch.nn as nn
 import torch.optim as optim
 from pandas import read_csv, DataFrame
@@ -13,6 +14,8 @@ from torchvision import models
 from sklearn.model_selection import train_test_split, KFold
 
 from itertools import product
+
+from torchvision.io import ImageReadMode
 
 from constants import AUGMENTATION_OUT_PATH, COMBINED_LABEL_PATH, DME_LABEL, ID_LABEL, TEST_SPLIT_VALUE, TRAIN_DATASET_LABEL, TEST_DATASET_LABEL, \
 	LEARN_OUT_PATH, LAST_EPISODE_DONE_FILE, BATCH_SIZE, EPOCHS, LOG_EVERY_BATCHES_AMOUNT, MODEL_CHECKPOINT_OUT_PATH, LAST_EPOCH_DONE_FILE, \
@@ -120,20 +123,6 @@ def get_model_data(
 def regnet(f_model_create, device, n_outputs, x, y, m_name):
 	def op():
 		model = f_model_create()
-
-		orig_first_layer = model.stem[0]
-		new_first_layer = nn.Conv2d(
-			1,
-			orig_first_layer.out_channels,
-			kernel_size=orig_first_layer.kernel_size,
-			stride=orig_first_layer.stride,
-			padding=orig_first_layer.padding,
-			bias=orig_first_layer.bias
-		)
-		model.stem[0] = new_first_layer
-		with torch.no_grad():
-			model.stem[0] = nn.Parameter(model.stem[0].weight.mean(dim=1, keepdim=True))
-
 		model.fc = nn.Linear(model.fc.in_features, n_outputs)
 		return model, x, y, m_name
 	return op
@@ -142,20 +131,6 @@ def regnet(f_model_create, device, n_outputs, x, y, m_name):
 def resnext(f_model_create, device, n_outputs, x, y, m_name):
 	def op():
 		model = f_model_create()
-
-		orig_first_layer = model.conv1
-		new_first_layer = nn.Conv2d(
-			1,
-			orig_first_layer.out_channels,
-			kernel_size=orig_first_layer.kernel_size,
-			stride=orig_first_layer.stride,
-			padding=orig_first_layer.padding,
-			bias=orig_first_layer.bias
-		)
-		model.conv1 = new_first_layer
-		with torch.no_grad():
-			model.conv1 = nn.Parameter(model.conv1.weight.mean(dim=1, keepdim=True))
-
 		model.fc = nn.Linear(model.fc.in_features, n_outputs)
 		return model, x, y, m_name
 	return op
@@ -172,19 +147,6 @@ def model_last_layer_fc(f_model_create, device, n_outputs, x, y, m_name):
 def inception(f_model_create, device, n_outputs, x, y, m_name):
 	def op():
 		model = f_model_create()
-
-		orig_first_layer = model.Conv2d_1a_3x3.conv
-		new_first_layer = nn.Conv2d(
-			1,
-			orig_first_layer.out_channels,
-			kernel_size=orig_first_layer.kernel_size,
-			stride=orig_first_layer.stride,
-			bias=orig_first_layer.bias
-		)
-		model.Conv2d_1a_3x3.conv = new_first_layer
-		with torch.no_grad():
-			model.Conv2d_1a_3x3.conv = nn.Parameter(model.Conv2d_1a_3x3.conv.weight.mean(dim=1, keepdim=True))
-
 		model.fc = nn.Linear(model.fc.in_features, n_outputs)
 		model.AuxLogits.fc = nn.Linear(model.AuxLogits.fc.in_features, n_outputs)
 		return model, x, y, m_name
@@ -194,18 +156,6 @@ def inception(f_model_create, device, n_outputs, x, y, m_name):
 def convnext(f_model_create, device, n_outputs, x, y, m_name):
 	def op():
 		model = f_model_create()
-
-		orig_first_layer = model.features[0][0]
-		new_first_layer = nn.Conv2d(
-			1,
-			orig_first_layer.out_channels,
-			kernel_size=orig_first_layer.kernel_size,
-			stride=orig_first_layer.stride
-		)
-		model.features[0][0] = new_first_layer
-		with torch.no_grad():
-			model.features[0][0] = nn.Parameter(model.features[0][0].weight.mean(dim=1, keepdim=True))
-
 		fc = model.classifier[-1]
 		model.classifier[-1] = nn.Linear(fc.in_features, n_outputs)
 		return model, x, y, m_name
@@ -215,20 +165,6 @@ def convnext(f_model_create, device, n_outputs, x, y, m_name):
 def efficientnet(f_model_create, device, n_outputs, x, y, m_name):
 	def op():
 		model = f_model_create()
-
-		orig_first_layer = model.features[0][0]
-		new_first_layer = nn.Conv2d(
-			1,
-			orig_first_layer.out_channels,
-			kernel_size=orig_first_layer.kernel_size,
-			stride=orig_first_layer.stride,
-			padding=orig_first_layer.padding,
-			bias=orig_first_layer.bias
-		)
-		model.features[0][0] = new_first_layer
-		with torch.no_grad():
-			model.features[0][0] = nn.Parameter(model.features[0][0].weight.mean(dim=1, keepdim=True))
-
 		fc = model.classifier[-1]
 		model.classifier[-1] = nn.Linear(fc.in_features, n_outputs)
 		return model, x, y, m_name
@@ -264,18 +200,6 @@ def model_last_layer_classifier(f_model_create, device, n_outputs, x, y, m_name)
 def swin(f_model_create, device, n_outputs, x, y, m_name):
 	def op():
 		model = f_model_create()
-
-		orig_first_layer = model.features[0][0]
-		new_first_layer = nn.Conv2d(
-			1,
-			orig_first_layer.out_channels,
-			kernel_size=orig_first_layer.kernel_size,
-			stride=orig_first_layer.stride
-		)
-		model.features[0][0] = new_first_layer
-		with torch.no_grad():
-			model.features[0][0] = nn.Parameter(model.features[0][0].weight.mean(dim=1, keepdim=True))
-
 		model.head = nn.Linear(model.head.in_features, n_outputs)
 		return model, x, y, m_name
 	return op
@@ -420,6 +344,7 @@ def main() -> None:
 			in_path = f"{IN_PATH_PREFIX}_{x_size}"
 			img_list = os.listdir(in_path)
 			train_val_ids, test_ids = get_split_ids(label_df)
+			train_val_ids = list(train_val_ids)
 			test_imgs = list(filter(lambda img: get_id_from_f_name(img) in test_ids, img_list))
 			plain_in_path = f"{IN_PLAIN_PATH_PREFIX}_{x_size}"
 			plain_img_list = os.listdir(plain_in_path)
@@ -428,14 +353,16 @@ def main() -> None:
 				in_path,
 				test_imgs,
 				label_df,
-				DME_LABEL
+				DME_LABEL,
+				is_grayscale=True
 			)
 			test_dl = DataLoader(test_ds, batch_size=BATCH_SIZE, shuffle=True)
 			plain_ds = FundusImageDataset(
 				plain_in_path,
 				plain_imgs,
 				label_df,
-				DME_LABEL
+				DME_LABEL,
+				is_grayscale=True
 			)
 			plain_dl = DataLoader(plain_ds, batch_size=BATCH_SIZE, shuffle=True)
 
@@ -467,14 +394,16 @@ def main() -> None:
 						in_path,
 						train_imgs,
 						label_df,
-						DME_LABEL
+						DME_LABEL,
+						is_grayscale=True
 					)
 					train_dl = DataLoader(train_ds, batch_size=BATCH_SIZE, shuffle=True)
 					val_ds = FundusImageDataset(
 						in_path,
 						val_imgs,
 						label_df,
-						DME_LABEL
+						DME_LABEL,
+						is_grayscale=True
 					)
 					val_dl = DataLoader(val_ds, batch_size=BATCH_SIZE, shuffle=True)
 
