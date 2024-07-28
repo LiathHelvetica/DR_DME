@@ -80,12 +80,16 @@ def get_model_data(
 	plain_conf_matrix
 ) -> dict:
 	return {
+		TRAIN_ACC_KEY: fold_acc_train_l,
 		TRAIN_ACC_MEAN_KEY: stat.mean(fold_acc_train_l),
 		TRAIN_ACC_STD_DEV_KEY: stat.stdev(fold_acc_train_l),
+		TRAIN_LOSS_KEY: fold_loss_train_l,
 		TRAIN_LOSS_MEAN_KEY: stat.mean(fold_loss_train_l),
 		TRAIN_LOSS_STD_DEV_KEY: stat.stdev(fold_loss_train_l),
+		VAL_ACC_KEY: fold_acc_val_l,
 		VAL_ACC_MEAN_KEY: stat.mean(fold_acc_val_l),
 		VAL_ACC_STD_DEV_KEY: stat.stdev(fold_acc_val_l),
+		VAL_LOSS_KEY: fold_loss_val_l,
 		VAL_LOSS_MEAN_KEY: stat.mean(fold_loss_val_l),
 		VAL_LOSS_STD_DEV_KEY: stat.stdev(fold_loss_val_l),
 		TEST_ACC_KEY: acc_test,
