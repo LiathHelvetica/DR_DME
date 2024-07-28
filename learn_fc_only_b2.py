@@ -14,7 +14,14 @@ from sklearn.model_selection import train_test_split, KFold
 
 from itertools import product
 
-from constants import AUGMENTATION_OUT_PATH, COMBINED_LABEL_PATH, DME_LABEL, ID_LABEL, TEST_SPLIT_VALUE, TRAIN_DATASET_LABEL, TEST_DATASET_LABEL, LEARN_OUT_PATH, LAST_EPISODE_DONE_FILE, BATCH_SIZE, EPOCHS, LOG_EVERY_BATCHES_AMOUNT, MODEL_CHECKPOINT_OUT_PATH, LAST_EPOCH_DONE_FILE, CONFUSION_MATRIX_ORIGINAL_VALUE_LABEL, CONFUSION_MATRIX_PREDICTION_VALUE_LABEL, CONFUSION_MATRIX_COUNT_LABEL, TRAIN_ACC_KEY, TRAIN_LOSS_KEY, TEST_ACC_KEY, TEST_LOSS_KEY, EPOCH_KEY, BATCH_SIZE_KEY, CRITERION_KEY, OPTIMIZER_NAME_KEY, OPTIMIZER_LR_KEY, OPTIMIZER_MOMENTUM_KEY, BASE_MODEL_NAME_KEY, SCHEDULER_NAME_KEY, SCHEDULER_STEP_SIZE_KEY, SCHEDULER_GAMMA_KEY, T_DELTA_KEY, N_SAMPLES_TRAIN_KEY, N_SAMPLES_TEST_KEY, N_CORRECT_TRAIN_KEY, N_CORRECT_TEST_KEY, CONFUSION_MATRIX_TRAIN_KEY, CONFUSION_MATRIX_TEST_KEY, AUGMENTATION_PLAIN_OUT_PATH, PLAIN_DATASET_LABEL, PLAIN_ACC_KEY, PLAIN_LOSS_KEY, N_SAMPLES_PLAIN_KEY, N_CORRECT_PLAIN_KEY, CONFUSION_MATRIX_PLAIN_KEY, FOLDS
+from constants import AUGMENTATION_OUT_PATH, COMBINED_LABEL_PATH, DME_LABEL, ID_LABEL, TEST_SPLIT_VALUE, TRAIN_DATASET_LABEL, TEST_DATASET_LABEL, \
+	LEARN_OUT_PATH, LAST_EPISODE_DONE_FILE, BATCH_SIZE, EPOCHS, LOG_EVERY_BATCHES_AMOUNT, MODEL_CHECKPOINT_OUT_PATH, LAST_EPOCH_DONE_FILE, \
+	CONFUSION_MATRIX_ORIGINAL_VALUE_LABEL, CONFUSION_MATRIX_PREDICTION_VALUE_LABEL, CONFUSION_MATRIX_COUNT_LABEL, TRAIN_ACC_KEY, TRAIN_LOSS_KEY, TEST_ACC_KEY, \
+	TEST_LOSS_KEY, EPOCH_KEY, BATCH_SIZE_KEY, CRITERION_KEY, OPTIMIZER_NAME_KEY, OPTIMIZER_LR_KEY, OPTIMIZER_MOMENTUM_KEY, BASE_MODEL_NAME_KEY, SCHEDULER_NAME_KEY, \
+	SCHEDULER_STEP_SIZE_KEY, SCHEDULER_GAMMA_KEY, T_DELTA_KEY, N_SAMPLES_TRAIN_KEY, N_SAMPLES_TEST_KEY, N_CORRECT_TRAIN_KEY, N_CORRECT_TEST_KEY, \
+	CONFUSION_MATRIX_TRAIN_KEY, CONFUSION_MATRIX_TEST_KEY, AUGMENTATION_PLAIN_OUT_PATH, PLAIN_DATASET_LABEL, PLAIN_ACC_KEY, PLAIN_LOSS_KEY, N_SAMPLES_PLAIN_KEY, \
+	N_CORRECT_PLAIN_KEY, CONFUSION_MATRIX_PLAIN_KEY, FOLDS, VAL_ACC_KEY, VAL_LOSS_KEY, TOTAL_EPOCHS_KEY, \
+	TOTAL_FOLDS_KEY, N_SAMPLES_TRAIN_AND_VAL_KEY
 from fundus_dataset import FundusImageDataset
 from img_util import get_id_from_f_name
 from no_op_scheduler import NoOpScheduler
@@ -48,38 +55,42 @@ def update_confusion_matrix(d: dict[(float, float), dict], orig_t: Tensor, pred_
 
 
 def get_model_data(
-	epoch_acc_train,
-	epoch_loss_train,
-	epoch_acc_val,
-	epoch_loss_val,
-	epoch_acc_plain,
-	epoch_loss_plain,
+	fold_acc_train,
+	fold_loss_train,
+	fold_acc_val,
+	fold_loss_val,
+	loss_test,
+	acc_test,
+	loss_plain,
+	acc_plain,
 	epoch,
+	epochs,
 	batch_size,
+	folds,
 	criterion,
 	optimizer,
 	m_name,
 	scheduler,
 	t_delta,
-	len_train_ds,
-	len_test_ds,
-	len_plain_ds,
-	running_corrects_train,
-	running_corrects_val,
-	running_corrects_plain,
-	train_conf_matrix,
-	val_conf_matrix,
+	test_val_size,
+	test_size,
+	plain_size,
+	test_conf_matrix,
 	plain_conf_matrix
 ) -> dict:
 	return {
-		TRAIN_ACC_KEY: epoch_acc_train.item(),
-		TRAIN_LOSS_KEY: epoch_loss_train,
-		TEST_ACC_KEY: epoch_acc_val.item(),
-		TEST_LOSS_KEY: epoch_loss_val,
-		PLAIN_ACC_KEY: epoch_acc_plain.item(),
-		PLAIN_LOSS_KEY: epoch_loss_plain,
+		TRAIN_ACC_KEY: fold_acc_train,
+		TRAIN_LOSS_KEY: fold_loss_train,
+		VAL_ACC_KEY: fold_acc_val,
+		VAL_LOSS_KEY: fold_loss_val,
+		TEST_ACC_KEY: acc_test,
+		TEST_LOSS_KEY: loss_test,
+		PLAIN_ACC_KEY: acc_plain,
+		PLAIN_LOSS_KEY: loss_plain,
 		EPOCH_KEY: epoch,
+		TOTAL_EPOCHS_KEY: epochs,
 		BATCH_SIZE_KEY: batch_size,
+		TOTAL_FOLDS_KEY: folds,
 		CRITERION_KEY: type(criterion).__name__,
 		OPTIMIZER_NAME_KEY: type(optimizer).__name__,
 		OPTIMIZER_LR_KEY: optimizer.defaults["lr"],
@@ -89,23 +100,62 @@ def get_model_data(
 		SCHEDULER_STEP_SIZE_KEY: try_or_else(lambda: scheduler.step_size, None),
 		SCHEDULER_GAMMA_KEY: try_or_else(lambda: scheduler.gamma, None),
 		T_DELTA_KEY: str(t_delta),
-		N_SAMPLES_TRAIN_KEY: len_train_ds,
-		N_SAMPLES_TEST_KEY: len_test_ds,
-		N_SAMPLES_PLAIN_KEY: len_plain_ds,
-		N_CORRECT_TRAIN_KEY: running_corrects_train.item(),
-		N_CORRECT_TEST_KEY: running_corrects_val.item(),
-		N_CORRECT_PLAIN_KEY: running_corrects_plain.item(),
-		CONFUSION_MATRIX_TRAIN_KEY: list(train_conf_matrix.values()),
-		CONFUSION_MATRIX_TEST_KEY: list(val_conf_matrix.values()),
+		N_SAMPLES_TRAIN_AND_VAL_KEY: test_val_size,
+		N_SAMPLES_TEST_KEY: test_size,
+		N_SAMPLES_PLAIN_KEY: plain_size,
+		CONFUSION_MATRIX_TEST_KEY: list(test_conf_matrix.values()),
 		CONFUSION_MATRIX_PLAIN_KEY: list(plain_conf_matrix.values())
 	}
+
+
+def regnet(f_model_create, device, n_outputs, x, y, m_name):
+	def op():
+		model = f_model_create()
+
+		orig_first_layer = model.stem[0]
+		new_first_layer = nn.Conv2d(
+			1,
+			orig_first_layer.out_channels,
+			kernel_size=orig_first_layer.kernel_size,
+			stride=orig_first_layer.stride,
+			padding=orig_first_layer.padding,
+			bias=orig_first_layer.bias
+		)
+		model.stem[0] = new_first_layer
+		with torch.no_grad():
+			model.stem[0] = nn.Parameter(model.stem[0].weight.mean(dim=1, keepdim=True))
+
+		model.fc = nn.Linear(model.fc.in_features, n_outputs)
+		return model, x, y, m_name
+	return op
+
+
+def resnext(f_model_create, device, n_outputs, x, y, m_name):
+	def op():
+		model = f_model_create()
+
+		orig_first_layer = model.conv1
+		new_first_layer = nn.Conv2d(
+			1,
+			orig_first_layer.out_channels,
+			kernel_size=orig_first_layer.kernel_size,
+			stride=orig_first_layer.stride,
+			padding=orig_first_layer.padding,
+			bias=orig_first_layer.bias
+		)
+		model.conv1 = new_first_layer
+		with torch.no_grad():
+			model.conv1 = nn.Parameter(model.conv1.weight.mean(dim=1, keepdim=True))
+
+		model.fc = nn.Linear(model.fc.in_features, n_outputs)
+		return model, x, y, m_name
+	return op
 
 
 def model_last_layer_fc(f_model_create, device, n_outputs, x, y, m_name):
 	def op():
 		model = f_model_create()
 		model.fc = nn.Linear(model.fc.in_features, n_outputs)
-		model.to(device)
 		return model, x, y, m_name
 	return op
 
@@ -113,9 +163,65 @@ def model_last_layer_fc(f_model_create, device, n_outputs, x, y, m_name):
 def inception(f_model_create, device, n_outputs, x, y, m_name):
 	def op():
 		model = f_model_create()
+
+		orig_first_layer = model.Conv2d_1a_3x3.conv
+		new_first_layer = nn.Conv2d(
+			1,
+			orig_first_layer.out_channels,
+			kernel_size=orig_first_layer.kernel_size,
+			stride=orig_first_layer.stride,
+			bias=orig_first_layer.bias
+		)
+		model.Conv2d_1a_3x3.conv = new_first_layer
+		with torch.no_grad():
+			model.Conv2d_1a_3x3.conv = nn.Parameter(model.Conv2d_1a_3x3.conv.weight.mean(dim=1, keepdim=True))
+
 		model.fc = nn.Linear(model.fc.in_features, n_outputs)
 		model.AuxLogits.fc = nn.Linear(model.AuxLogits.fc.in_features, n_outputs)
-		model.to(device)
+		return model, x, y, m_name
+	return op
+
+
+def convnext(f_model_create, device, n_outputs, x, y, m_name):
+	def op():
+		model = f_model_create()
+
+		orig_first_layer = model.features[0][0]
+		new_first_layer = nn.Conv2d(
+			1,
+			orig_first_layer.out_channels,
+			kernel_size=orig_first_layer.kernel_size,
+			stride=orig_first_layer.stride
+		)
+		model.features[0][0] = new_first_layer
+		with torch.no_grad():
+			model.features[0][0] = nn.Parameter(model.features[0][0].weight.mean(dim=1, keepdim=True))
+
+		fc = model.classifier[-1]
+		model.classifier[-1] = nn.Linear(fc.in_features, n_outputs)
+		return model, x, y, m_name
+	return op
+
+
+def efficientnet(f_model_create, device, n_outputs, x, y, m_name):
+	def op():
+		model = f_model_create()
+
+		orig_first_layer = model.features[0][0]
+		new_first_layer = nn.Conv2d(
+			1,
+			orig_first_layer.out_channels,
+			kernel_size=orig_first_layer.kernel_size,
+			stride=orig_first_layer.stride,
+			padding=orig_first_layer.padding,
+			bias=orig_first_layer.bias
+		)
+		model.features[0][0] = new_first_layer
+		with torch.no_grad():
+			model.features[0][0] = nn.Parameter(model.features[0][0].weight.mean(dim=1, keepdim=True))
+
+		fc = model.classifier[-1]
+		model.classifier[-1] = nn.Linear(fc.in_features, n_outputs)
 		return model, x, y, m_name
 	return op
 
@@ -125,7 +231,6 @@ def model_last_layer_sequential_classifier(f_model_create, device, n_outputs, x,
 		model = f_model_create()
 		fc = model.classifier[-1]
 		model.classifier[-1] = nn.Linear(fc.in_features, n_outputs)
-		model.to(device)
 		return model, x, y, m_name
 	return op
 
@@ -135,7 +240,6 @@ def model_last_layer_sequential_heads(f_model_create, device, n_outputs, x, y, m
 		model = f_model_create()
 		fc = model.heads[-1]
 		model.heads[-1] = nn.Linear(fc.in_features, n_outputs)
-		model.to(device)
 		return model, x, y, m_name
 	return op
 
@@ -144,7 +248,26 @@ def model_last_layer_classifier(f_model_create, device, n_outputs, x, y, m_name)
 	def op():
 		model = f_model_create()
 		model.classifier = nn.Linear(model.classifier.in_features, n_outputs)
-		model.to(device)
+		return model, x, y, m_name
+	return op
+
+
+def swin(f_model_create, device, n_outputs, x, y, m_name):
+	def op():
+		model = f_model_create()
+
+		orig_first_layer = model.features[0][0]
+		new_first_layer = nn.Conv2d(
+			1,
+			orig_first_layer.out_channels,
+			kernel_size=orig_first_layer.kernel_size,
+			stride=orig_first_layer.stride
+		)
+		model.features[0][0] = new_first_layer
+		with torch.no_grad():
+			model.features[0][0] = nn.Parameter(model.features[0][0].weight.mean(dim=1, keepdim=True))
+
+		model.head = nn.Linear(model.head.in_features, n_outputs)
 		return model, x, y, m_name
 	return op
 
@@ -153,7 +276,6 @@ def model_last_layer_head(f_model_create, device, n_outputs, x, y, m_name):
 	def op():
 		model = f_model_create()
 		model.head = nn.Linear(model.head.in_features, n_outputs)
-		model.to(device)
 		return model, x, y, m_name
 	return op
 
@@ -181,43 +303,43 @@ def main() -> None:
 
 	model_initializers = [
 		inception(lambda: models.inception_v3(weights=models.Inception_V3_Weights.IMAGENET1K_V1, aux_logits=True), device, 1, 342, 342, "inception_v3"),
-		model_last_layer_fc(lambda: models.regnet_y_400mf(weights=models.RegNet_Y_400MF_Weights.IMAGENET1K_V1), device, 1, 224, 224, "regnet_y_400mf_v1"),
-		model_last_layer_fc(lambda: models.regnet_y_400mf(weights=models.RegNet_Y_400MF_Weights.IMAGENET1K_V2), device, 1, 232, 232, "regnet_y_400mf_v2"),
-		model_last_layer_fc(lambda: models.regnet_y_800mf(weights=models.RegNet_Y_800MF_Weights.IMAGENET1K_V1), device, 1, 224, 224, "regnet_y_800mf_v1"),
-		model_last_layer_fc(lambda: models.regnet_y_800mf(weights=models.RegNet_Y_800MF_Weights.IMAGENET1K_V2), device, 1, 232, 232, "regnet_y_800mf_v2"),
-		model_last_layer_fc(lambda: models.regnet_y_1_6gf(weights=models.RegNet_Y_1_6GF_Weights.IMAGENET1K_V1), device, 1, 224, 224, "regnet_y_1_6gf_v1"),
-		model_last_layer_fc(lambda: models.regnet_y_1_6gf(weights=models.RegNet_Y_1_6GF_Weights.IMAGENET1K_V2), device, 1, 232, 232, "regnet_y_1_6gf_v2"),
-		model_last_layer_fc(lambda: models.regnet_y_3_2gf(weights=models.RegNet_Y_3_2GF_Weights.IMAGENET1K_V1), device, 1, 224, 224, "regnet_y_3_2gf_v1"),
-		model_last_layer_fc(lambda: models.regnet_y_3_2gf(weights=models.RegNet_Y_3_2GF_Weights.IMAGENET1K_V2), device, 1, 232, 232, "regnet_y_3_2gf_v2"),
-		model_last_layer_fc(lambda: models.regnet_y_8gf(weights=models.RegNet_Y_8GF_Weights.IMAGENET1K_V1), device, 1, 224, 224, "regnet_y_8gf_v1"),
-		model_last_layer_fc(lambda: models.regnet_y_8gf(weights=models.RegNet_Y_8GF_Weights.IMAGENET1K_V2), device, 1, 232, 232, "regnet_y_8gf_v2"),
-		model_last_layer_fc(lambda: models.regnet_x_400mf(weights=models.RegNet_X_400MF_Weights.IMAGENET1K_V1), device, 1, 224, 224, "regnet_x_400mf_v1"),
-		model_last_layer_fc(lambda: models.regnet_x_400mf(weights=models.RegNet_X_400MF_Weights.IMAGENET1K_V2), device, 1, 232, 232, "regnet_x_400mf_v2"),
-		model_last_layer_fc(lambda: models.regnet_x_800mf(weights=models.RegNet_X_800MF_Weights.IMAGENET1K_V1), device, 1, 224, 224, "regnet_x_800mf_v1"),
-		model_last_layer_fc(lambda: models.regnet_x_800mf(weights=models.RegNet_X_800MF_Weights.IMAGENET1K_V2), device, 1, 232, 232, "regnet_x_800mf_v2"),
-		model_last_layer_fc(lambda: models.regnet_x_1_6gf(weights=models.RegNet_X_1_6GF_Weights.IMAGENET1K_V1), device, 1, 224, 224, "regnet_x_1_6gf_v1"),
-		model_last_layer_fc(lambda: models.regnet_x_1_6gf(weights=models.RegNet_X_1_6GF_Weights.IMAGENET1K_V2), device, 1, 232, 232, "regnet_x_1_6gf_v2"),
-		model_last_layer_fc(lambda: models.regnet_x_3_2gf(weights=models.RegNet_X_3_2GF_Weights.IMAGENET1K_V1), device, 1, 224, 224, "regnet_x_3_2gf_v1"),
-		model_last_layer_fc(lambda: models.regnet_x_3_2gf(weights=models.RegNet_X_3_2GF_Weights.IMAGENET1K_V2), device, 1, 232, 232, "regnet_x_3_2gf_v2"),
-		model_last_layer_fc(lambda: models.regnet_x_8gf(weights=models.RegNet_X_8GF_Weights.IMAGENET1K_V1), device, 1, 224, 224, "regnet_x_8gf_v1"),
-		model_last_layer_fc(lambda: models.regnet_x_8gf(weights=models.RegNet_X_8GF_Weights.IMAGENET1K_V2), device, 1, 232, 232, "regnet_x_8gf_v2"),
-		model_last_layer_fc(lambda: models.resnext101_64x4d(weights=models.ResNeXt101_64X4D_Weights.IMAGENET1K_V1), device, 1, 232, 232, "resnext101_64x4d_v1"),
+		regnet(lambda: models.regnet_y_400mf(weights=models.RegNet_Y_400MF_Weights.IMAGENET1K_V1), device, 1, 224, 224, "regnet_y_400mf_v1"),
+		regnet(lambda: models.regnet_y_400mf(weights=models.RegNet_Y_400MF_Weights.IMAGENET1K_V2), device, 1, 232, 232, "regnet_y_400mf_v2"),
+		regnet(lambda: models.regnet_y_800mf(weights=models.RegNet_Y_800MF_Weights.IMAGENET1K_V1), device, 1, 224, 224, "regnet_y_800mf_v1"),
+		regnet(lambda: models.regnet_y_800mf(weights=models.RegNet_Y_800MF_Weights.IMAGENET1K_V2), device, 1, 232, 232, "regnet_y_800mf_v2"),
+		regnet(lambda: models.regnet_y_1_6gf(weights=models.RegNet_Y_1_6GF_Weights.IMAGENET1K_V1), device, 1, 224, 224, "regnet_y_1_6gf_v1"),
+		regnet(lambda: models.regnet_y_1_6gf(weights=models.RegNet_Y_1_6GF_Weights.IMAGENET1K_V2), device, 1, 232, 232, "regnet_y_1_6gf_v2"),
+		regnet(lambda: models.regnet_y_3_2gf(weights=models.RegNet_Y_3_2GF_Weights.IMAGENET1K_V1), device, 1, 224, 224, "regnet_y_3_2gf_v1"),
+		regnet(lambda: models.regnet_y_3_2gf(weights=models.RegNet_Y_3_2GF_Weights.IMAGENET1K_V2), device, 1, 232, 232, "regnet_y_3_2gf_v2"),
+		regnet(lambda: models.regnet_y_8gf(weights=models.RegNet_Y_8GF_Weights.IMAGENET1K_V1), device, 1, 224, 224, "regnet_y_8gf_v1"),
+		regnet(lambda: models.regnet_y_8gf(weights=models.RegNet_Y_8GF_Weights.IMAGENET1K_V2), device, 1, 232, 232, "regnet_y_8gf_v2"),
+		regnet(lambda: models.regnet_x_400mf(weights=models.RegNet_X_400MF_Weights.IMAGENET1K_V1), device, 1, 224, 224, "regnet_x_400mf_v1"),
+		regnet(lambda: models.regnet_x_400mf(weights=models.RegNet_X_400MF_Weights.IMAGENET1K_V2), device, 1, 232, 232, "regnet_x_400mf_v2"),
+		regnet(lambda: models.regnet_x_800mf(weights=models.RegNet_X_800MF_Weights.IMAGENET1K_V1), device, 1, 224, 224, "regnet_x_800mf_v1"),
+		regnet(lambda: models.regnet_x_800mf(weights=models.RegNet_X_800MF_Weights.IMAGENET1K_V2), device, 1, 232, 232, "regnet_x_800mf_v2"),
+		regnet(lambda: models.regnet_x_1_6gf(weights=models.RegNet_X_1_6GF_Weights.IMAGENET1K_V1), device, 1, 224, 224, "regnet_x_1_6gf_v1"),
+		regnet(lambda: models.regnet_x_1_6gf(weights=models.RegNet_X_1_6GF_Weights.IMAGENET1K_V2), device, 1, 232, 232, "regnet_x_1_6gf_v2"),
+		regnet(lambda: models.regnet_x_3_2gf(weights=models.RegNet_X_3_2GF_Weights.IMAGENET1K_V1), device, 1, 224, 224, "regnet_x_3_2gf_v1"),
+		regnet(lambda: models.regnet_x_3_2gf(weights=models.RegNet_X_3_2GF_Weights.IMAGENET1K_V2), device, 1, 232, 232, "regnet_x_3_2gf_v2"),
+		regnet(lambda: models.regnet_x_8gf(weights=models.RegNet_X_8GF_Weights.IMAGENET1K_V1), device, 1, 224, 224, "regnet_x_8gf_v1"),
+		regnet(lambda: models.regnet_x_8gf(weights=models.RegNet_X_8GF_Weights.IMAGENET1K_V2), device, 1, 232, 232, "regnet_x_8gf_v2"),
+		resnext(lambda: models.resnext101_64x4d(weights=models.ResNeXt101_64X4D_Weights.IMAGENET1K_V1), device, 1, 232, 232, "resnext101_64x4d_v1"),
 		####
-		model_last_layer_sequential_classifier(lambda: models.convnext_tiny(weights=models.ConvNeXt_Tiny_Weights.IMAGENET1K_V1), device, 1, 236, 236, "convnext_tiny"),
-		model_last_layer_sequential_classifier(lambda: models.convnext_small(weights=models.ConvNeXt_Small_Weights.IMAGENET1K_V1), device, 1, 230, 230, "convnext_small"),
-		model_last_layer_sequential_classifier(lambda: models.convnext_base(weights=models.ConvNeXt_Base_Weights.IMAGENET1K_V1), device, 1, 232, 232, "convnext_base"),
-		model_last_layer_sequential_classifier(lambda: models.efficientnet_b0(weights=models.EfficientNet_B0_Weights.IMAGENET1K_V1), device, 1, 256, 256, "efficientnet_b0"),
-		model_last_layer_sequential_classifier(lambda: models.efficientnet_b1(weights=models.EfficientNet_B1_Weights.IMAGENET1K_V1), device, 1, 256, 256, "efficientnet_b1"),
-		model_last_layer_sequential_classifier(lambda: models.efficientnet_b2(weights=models.EfficientNet_B2_Weights.IMAGENET1K_V1), device, 1, 288, 288, "efficientnet_b2"),
+		convnext(lambda: models.convnext_tiny(weights=models.ConvNeXt_Tiny_Weights.IMAGENET1K_V1), device, 1, 236, 236, "convnext_tiny"),
+		convnext(lambda: models.convnext_small(weights=models.ConvNeXt_Small_Weights.IMAGENET1K_V1), device, 1, 230, 230, "convnext_small"),
+		convnext(lambda: models.convnext_base(weights=models.ConvNeXt_Base_Weights.IMAGENET1K_V1), device, 1, 232, 232, "convnext_base"),
+		efficientnet(lambda: models.efficientnet_b0(weights=models.EfficientNet_B0_Weights.IMAGENET1K_V1), device, 1, 256, 256, "efficientnet_b0"),
+		efficientnet(lambda: models.efficientnet_b1(weights=models.EfficientNet_B1_Weights.IMAGENET1K_V1), device, 1, 256, 256, "efficientnet_b1"),
+		efficientnet(lambda: models.efficientnet_b2(weights=models.EfficientNet_B2_Weights.IMAGENET1K_V1), device, 1, 288, 288, "efficientnet_b2"),
 		####
 		####
 		####
-		model_last_layer_head(lambda: models.swin_b(weights=models.Swin_B_Weights.IMAGENET1K_V1), device, 1, 238, 238, "swin_b"),
-		model_last_layer_head(lambda: models.swin_t(weights=models.Swin_T_Weights.IMAGENET1K_V1), device, 1, 232, 232, "swin_t"),
-		model_last_layer_head(lambda: models.swin_s(weights=models.Swin_S_Weights.IMAGENET1K_V1), device, 1, 246, 246, "swin_s"),
-		model_last_layer_head(lambda: models.swin_v2_b(weights=models.Swin_V2_B_Weights.IMAGENET1K_V1), device, 1, 272, 272, "swin_v2_b"),
-		model_last_layer_head(lambda: models.swin_v2_t(weights=models.Swin_V2_T_Weights.IMAGENET1K_V1), device, 1, 260, 260, "swin_v2_t"),
-		model_last_layer_head(lambda: models.swin_v2_s(weights=models.Swin_V2_S_Weights.IMAGENET1K_V1), device, 1, 260, 260, "swin_v2_s"),
+		swin(lambda: models.swin_b(weights=models.Swin_B_Weights.IMAGENET1K_V1), device, 1, 238, 238, "swin_b"),
+		swin(lambda: models.swin_t(weights=models.Swin_T_Weights.IMAGENET1K_V1), device, 1, 232, 232, "swin_t"),
+		swin(lambda: models.swin_s(weights=models.Swin_S_Weights.IMAGENET1K_V1), device, 1, 246, 246, "swin_s"),
+		swin(lambda: models.swin_v2_b(weights=models.Swin_V2_B_Weights.IMAGENET1K_V1), device, 1, 272, 272, "swin_v2_b"),
+		swin(lambda: models.swin_v2_t(weights=models.Swin_V2_T_Weights.IMAGENET1K_V1), device, 1, 260, 260, "swin_v2_t"),
+		swin(lambda: models.swin_v2_s(weights=models.Swin_V2_S_Weights.IMAGENET1K_V1), device, 1, 260, 260, "swin_v2_s"),
 		####
 		# model_last_layer_fc(lambda: models.regnet_x_16gf(weights=models.RegNet_X_16GF_Weights.IMAGENET1K_V1), device, 1, 224, 224, "regnet_x_16gf_v1"),
 		# model_last_layer_fc(lambda: models.regnet_x_16gf(weights=models.RegNet_X_16GF_Weights.IMAGENET1K_V2), device, 1, 232, 232, "regnet_x_16gf_v2"),
@@ -281,18 +403,10 @@ def main() -> None:
 			start = datetime.now()
 			model, x_size, y_size, m_name = model_f()
 			print(f"Using: {m_name}")
-			model = model.to(device)
+			# model = model.to(device)
 
 			optimizer = optim_f(model.parameters())
 			scheduler = schedul_f(optimizer, EPOCHS)
-
-			last_epoch = -1
-			with open(LAST_EPOCH_DONE_FILE, "r") as f_lep:
-				last_epoch = int(f_lep.read())
-				last_epoch = -1 if last_epoch >= EPOCHS - 1 else last_epoch
-				if last_epoch != -1 and not model_read_from_file:
-					model.load_state_dict(torch.load(MODEL_CHECKPOINT_OUT_PATH))
-					model_read_from_file = True
 
 			in_path = f"{IN_PATH_PREFIX}_{x_size}"
 			img_list = os.listdir(in_path)
@@ -316,7 +430,7 @@ def main() -> None:
 			)
 			plain_dl = DataLoader(plain_ds, batch_size=BATCH_SIZE, shuffle=True)
 
-			for epoch in list(range(EPOCHS))[last_epoch + 1:]:
+			for epoch in list(range(EPOCHS)):
 				folder = KFold(n_splits=FOLDS, shuffle=True)
 				best_model_foldwise = None
 				best_model_foldwise_acc = None
@@ -331,13 +445,16 @@ def main() -> None:
 				fold_acc_val = 0.0
 				fold_loss_val = 0.0
 
+				# TODO: std dev of val error
+
+				initial_model = copy.deepcopy(model)
+
 				for fold, (train_indexes, val_indexes) in enumerate(folder.split(train_val_ids)):
 
-					# TODO: model should be reset in each fold
-					# TODO: break if train is > 0.99
-					# TODO: modify initial layers for grayscale
-
 					print(f"> Fold {fold + 1}")
+
+					model = initial_model
+					model = model.to(device)
 
 					train_ids = [train_val_ids[i] for i in train_indexes]
 					val_ids = [train_val_ids[i] for i in val_indexes]
@@ -429,12 +546,13 @@ def main() -> None:
 					folds_acc_sum_val += acc_val
 					folds_loss_sum_val += loss_val
 
+					model = model.to("cpu")
+
 				fold_acc_train = folds_acc_sum_train / FOLDS
 				fold_loss_train = folds_loss_sum_train / FOLDS
 				fold_acc_val = folds_acc_sum_val / FOLDS
 				fold_loss_val = folds_loss_sum_val / FOLDS
 
-				model.to("cpu")
 				model = best_model_foldwise
 				model.to(device)
 
@@ -490,33 +608,30 @@ def main() -> None:
 					loss_plain = running_loss_plain / len(plain_ds)
 					acc_plain = running_corrects_plain / len(plain_ds)
 
-				# TODO: cont
-
-				torch.save(model.state_dict(), MODEL_CHECKPOINT_OUT_PATH)
 				stop = datetime.now()
 
 				model_data = get_model_data(
-					epoch_acc_train,
-					epoch_loss_train,
-					epoch_acc_val,
-					epoch_loss_val,
-					epoch_acc_plain,
-					epoch_loss_plain,
+					fold_acc_train,
+					fold_loss_train,
+					fold_acc_val,
+					fold_loss_val,
+					loss_test,
+					acc_test,
+					loss_plain,
+					acc_plain,
 					epoch + 1,
+					EPOCHS,
 					BATCH_SIZE,
+					FOLDS,
 					criterion,
 					optimizer,
 					m_name,
 					scheduler,
 					stop - start,
-					len(train_ds),
+					len(train_val_ids),
 					len(test_ds),
 					len(plain_ds),
-					running_corrects_train,
-					running_corrects_val,
-					running_corrects_plain,
-					train_conf_matrix,
-					val_conf_matrix,
+					test_conf_matrix,
 					plain_conf_matrix
 				)
 				out_data = json.dumps(model_data)
@@ -525,8 +640,8 @@ def main() -> None:
 				f_out.write("\n")
 				f_out.flush()
 
-				with open(LAST_EPOCH_DONE_FILE, "w") as f_lep:
-					f_lep.write(str(epoch))
+				if fold_acc_train >= 0.99:
+					break
 
 			with open(LAST_EPISODE_DONE_FILE, "w") as f_le:
 				last_episode += 1
