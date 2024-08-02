@@ -49,7 +49,7 @@ class FundusImageDataset(Dataset):
 	def __len__(self) -> int:
 		return len(self.img_list)
 
-	def __getitem__(self, index) -> (Tensor, int):
+	def __getitem__(self, index) -> (Tensor, int, str):
 		f_name = self.img_list[index]
 		id = get_id_from_f_name(f_name)
 		data = read_image(f"{self.img_path}/{f_name}")
@@ -58,4 +58,4 @@ class FundusImageDataset(Dataset):
 			tft.normalize(data, mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225], inplace=True)
 		else:
 			tft.normalize(data, mean=[0.239, 0.239, 0.239], std=[0.154, 0.154, 0.154], inplace=True)
-		return data, self.get_label_by_id(id)
+		return data, self.get_label_by_id(id), id

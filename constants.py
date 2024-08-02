@@ -2,6 +2,7 @@ import os
 
 HOME_PATH = os.path.expanduser("~")
 DATA_PATH = f"{HOME_PATH}/DR_DME_DATA"
+CHECKPOINT_PATH = "checkpoint"
 
 COMBINED_DATA_PATH = f"{DATA_PATH}/combined"
 COMBINED_IMG_PATH = f"{COMBINED_DATA_PATH}/imgs"
@@ -31,16 +32,18 @@ IDRID_IMG_PATH_2 = f"{IDRID_PATH}/OriginalImages/Train"
 IMG_CROPPER_THRESHOLD = 15
 
 AUGMENTATION_NAME_SEPARATOR = "|"
-AUGMENTATION_OUT_PATH = f"{DATA_PATH}/aug_out_b3"
-AUGMENTATION_PLAIN_OUT_PATH = f"{DATA_PATH}/aug_out_plain_b3"
+AUGMENTATION_OUT_PATH = f"{DATA_PATH}/aug_out_b2"
+AUGMENTATION_PLAIN_OUT_PATH = f"{DATA_PATH}/aug_out_plain_b2"
 
 TEST_SPLIT_VALUE = 0.15
 TRAIN_DATASET_LABEL = "train"
 TEST_DATASET_LABEL = "test"
 PLAIN_DATASET_LABEL = "plain"
 LEARN_OUT_PATH = f"{DATA_PATH}/learn_out"
-LAST_EPISODE_DONE_FILE = "last_episode_b3.txt"
-LAST_EPOCH_DONE_FILE = "last_epoch_b3.txt"
+LAST_EPISODE_DONE_FILE = f"{CHECKPOINT_PATH}/last_episode_b2.txt"
+LAST_EPOCH_DONE_FILE = f"{CHECKPOINT_PATH}/last_epoch_b2.txt"
+LAST_FOLD_DONE_FILE = f"{CHECKPOINT_PATH}/last_fold_b2.txt"
+RANDOM_STATE_FILE = f"{CHECKPOINT_PATH}/random_state.txt"
 MODEL_CHECKPOINT_OUT_PATH = "model.torch"
 BATCH_SIZE = 128
 EPOCHS = 5
@@ -65,12 +68,15 @@ VAL_LOSS_MEAN_KEY = "meanValLoss"
 VAL_LOSS_STD_DEV_KEY = "stdDevValLoss"
 TEST_ACC_KEY = "testAcc"
 TEST_LOSS_KEY = "testLoss"
+TEST_FAILED_IDS_KEY = "testFailedIds"
 PLAIN_ACC_KEY = "plainAcc"
 PLAIN_LOSS_KEY = "plainLoss"
+PLAIN_FAILED_IDS_KEY = "plainFailedIds"
 EPOCH_KEY = "epoch"
 TOTAL_EPOCHS_KEY = "epochsTotal"
 BATCH_SIZE_KEY = "batchSize"
 TOTAL_FOLDS_KEY = "totalFolds"
+FOLD_KEY = "fold"
 CRITERION_KEY = "criterion"
 OPTIMIZER_NAME_KEY = "optimizerName"
 OPTIMIZER_LR_KEY = "optimizerLr"

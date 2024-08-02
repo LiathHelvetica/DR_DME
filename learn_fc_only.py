@@ -104,7 +104,6 @@ def model_last_layer_fc(f_model_create, device, n_outputs, x, y, m_name):
 	def op():
 		model = f_model_create()
 		model.fc = nn.Linear(model.fc.in_features, n_outputs)
-		model.to(device)
 		return model, x, y, m_name
 	return op
 
@@ -114,7 +113,6 @@ def inception(f_model_create, device, n_outputs, x, y, m_name):
 		model = f_model_create()
 		model.fc = nn.Linear(model.fc.in_features, n_outputs)
 		model.AuxLogits.fc = nn.Linear(model.AuxLogits.fc.in_features, n_outputs)
-		model.to(device)
 		return model, x, y, m_name
 	return op
 
@@ -124,7 +122,6 @@ def model_last_layer_sequential_classifier(f_model_create, device, n_outputs, x,
 		model = f_model_create()
 		fc = model.classifier[-1]
 		model.classifier[-1] = nn.Linear(fc.in_features, n_outputs)
-		model.to(device)
 		return model, x, y, m_name
 	return op
 
@@ -134,7 +131,6 @@ def model_last_layer_sequential_heads(f_model_create, device, n_outputs, x, y, m
 		model = f_model_create()
 		fc = model.heads[-1]
 		model.heads[-1] = nn.Linear(fc.in_features, n_outputs)
-		model.to(device)
 		return model, x, y, m_name
 	return op
 
@@ -143,7 +139,6 @@ def model_last_layer_classifier(f_model_create, device, n_outputs, x, y, m_name)
 	def op():
 		model = f_model_create()
 		model.classifier = nn.Linear(model.classifier.in_features, n_outputs)
-		model.to(device)
 		return model, x, y, m_name
 	return op
 
@@ -152,7 +147,6 @@ def model_last_layer_head(f_model_create, device, n_outputs, x, y, m_name):
 	def op():
 		model = f_model_create()
 		model.head = nn.Linear(model.head.in_features, n_outputs)
-		model.to(device)
 		return model, x, y, m_name
 	return op
 
@@ -410,7 +404,7 @@ def main() -> None:
 				train_conf_matrix: dict[(float, float), dict] = dict()
 				i_batch = 1
 				print(f"Train - {n_batches} batches")
-				for inputs, labels in train_dataloader:
+				for inputs, labels, ids in train_dataloader:
 					inputs = inputs.to(device)
 					labels = labels.float().to(device)
 					optimizer.zero_grad(set_to_none=True)
@@ -445,7 +439,7 @@ def main() -> None:
 					val_conf_matrix: dict[(float, float), dict] = dict()
 					i_batch = 1
 					print(f"Validate - {n_batches} batches")
-					for inputs, labels in test_dataloader:
+					for inputs, labels, ids in test_dataloader:
 						inputs = inputs.to(device)
 						labels = labels.float().to(device)
 						# optimizer.zero_grad()
@@ -471,7 +465,7 @@ def main() -> None:
 					plain_conf_matrix: dict[(float, float), dict] = dict()
 					i_batch = 1
 					print(f"Plain - {n_batches} batches")
-					for inputs, labels in plain_dataloader:
+					for inputs, labels, _ in plain_dataloader:
 						inputs = inputs.to(device)
 						labels = labels.float().to(device)
 						# optimizer.zero_grad()

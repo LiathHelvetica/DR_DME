@@ -1,5 +1,6 @@
 import copy
 import os
+import random
 from datetime import datetime
 import json
 import statistics as stat
@@ -25,7 +26,7 @@ from constants import AUGMENTATION_OUT_PATH, COMBINED_LABEL_PATH, DME_LABEL, ID_
 	CONFUSION_MATRIX_TRAIN_KEY, CONFUSION_MATRIX_TEST_KEY, AUGMENTATION_PLAIN_OUT_PATH, PLAIN_DATASET_LABEL, PLAIN_ACC_KEY, PLAIN_LOSS_KEY, N_SAMPLES_PLAIN_KEY, \
 	N_CORRECT_PLAIN_KEY, CONFUSION_MATRIX_PLAIN_KEY, FOLDS, VAL_ACC_KEY, VAL_LOSS_KEY, TOTAL_EPOCHS_KEY, \
 	TOTAL_FOLDS_KEY, N_SAMPLES_TRAIN_AND_VAL_KEY, TRAIN_ACC_MEAN_KEY, TRAIN_ACC_STD_DEV_KEY, TRAIN_LOSS_MEAN_KEY, TRAIN_LOSS_STD_DEV_KEY, VAL_ACC_MEAN_KEY, \
-	VAL_ACC_STD_DEV_KEY, VAL_LOSS_MEAN_KEY, VAL_LOSS_STD_DEV_KEY
+	VAL_ACC_STD_DEV_KEY, VAL_LOSS_MEAN_KEY, VAL_LOSS_STD_DEV_KEY, TEST_FAILED_IDS_KEY, PLAIN_FAILED_IDS_KEY, LAST_FOLD_DONE_FILE, FOLD_KEY, RANDOM_STATE_FILE
 from fundus_dataset import FundusImageDataset
 from img_util import get_id_from_f_name
 from no_op_scheduler import NoOpScheduler
@@ -59,17 +60,18 @@ def update_confusion_matrix(d: dict[(float, float), dict], orig_t: Tensor, pred_
 
 
 def get_model_data(
-	fold_acc_train_l,
-	fold_loss_train_l,
-	fold_acc_val_l,
-	fold_loss_val_l,
+	train_acc,
+	train_loss,
 	loss_test,
 	acc_test,
+	failed_ids_test,
 	loss_plain,
 	acc_plain,
+	failed_ids_plain,
 	epoch,
 	epochs,
 	batch_size,
+	fold,
 	folds,
 	criterion,
 	optimizer,
@@ -83,25 +85,18 @@ def get_model_data(
 	plain_conf_matrix
 ) -> dict:
 	return {
-		TRAIN_ACC_KEY: fold_acc_train_l,
-		TRAIN_ACC_MEAN_KEY: stat.mean(fold_acc_train_l),
-		TRAIN_ACC_STD_DEV_KEY: stat.stdev(fold_acc_train_l),
-		TRAIN_LOSS_KEY: fold_loss_train_l,
-		TRAIN_LOSS_MEAN_KEY: stat.mean(fold_loss_train_l),
-		TRAIN_LOSS_STD_DEV_KEY: stat.stdev(fold_loss_train_l),
-		VAL_ACC_KEY: fold_acc_val_l,
-		VAL_ACC_MEAN_KEY: stat.mean(fold_acc_val_l),
-		VAL_ACC_STD_DEV_KEY: stat.stdev(fold_acc_val_l),
-		VAL_LOSS_KEY: fold_loss_val_l,
-		VAL_LOSS_MEAN_KEY: stat.mean(fold_loss_val_l),
-		VAL_LOSS_STD_DEV_KEY: stat.stdev(fold_loss_val_l),
+		TRAIN_ACC_KEY: train_acc,
+		TRAIN_LOSS_KEY: train_loss,
 		TEST_ACC_KEY: acc_test,
 		TEST_LOSS_KEY: loss_test,
+		TEST_FAILED_IDS_KEY: list(failed_ids_test),
 		PLAIN_ACC_KEY: acc_plain,
 		PLAIN_LOSS_KEY: loss_plain,
+		PLAIN_FAILED_IDS_KEY: list(failed_ids_plain),
 		EPOCH_KEY: epoch,
 		TOTAL_EPOCHS_KEY: epochs,
 		BATCH_SIZE_KEY: batch_size,
+		FOLD_KEY: fold,
 		TOTAL_FOLDS_KEY: folds,
 		CRITERION_KEY: type(criterion).__name__,
 		OPTIMIZER_NAME_KEY: type(optimizer).__name__,
@@ -229,6 +224,13 @@ def get_split_ids(label_df: DataFrame) -> (list[str], list[str]):
 	return dme_id_train, dme_id_test
 
 
+def get_ok_and_bad_ids(label_df: DataFrame) -> (list[str], list[str]):
+	dme_ok = label_df[label_df[DME_LABEL] == 0][ID_LABEL].to_list()
+	dme_bad = label_df[label_df[DME_LABEL] == 1][ID_LABEL].to_list()
+	return dme_ok, dme_bad
+
+
+
 def main() -> None:
 	label_df = read_csv(LABELS_PATH)
 	sizes = [260, 272, 246, 238, 288, 256, 342, 230, 236, 224, 232] # 480, 600, 528, 456, 320, 384
@@ -333,79 +335,67 @@ def main() -> None:
 	with open(learn_out_file, "w") as f_out:
 
 		for model_f, optim_f, schedul_f in episodes:
-			start = datetime.now()
-			model, x_size, y_size, m_name = model_f()
-			print(f"Using: {m_name}")
-			# model = model.to(device)
 
-			optimizer = optim_f(model.parameters())
-			scheduler = schedul_f(optimizer, EPOCHS)
+			last_fold = -1
+			with open(LAST_FOLD_DONE_FILE, "r") as f_lf:
+				last_fold = int(f_lf.read())
+				last_fold = -1 if last_fold >= FOLDS - 1 else last_fold
+
+			random_state = -1
+			with open(RANDOM_STATE_FILE, "r") as ran_f:
+				random_state = int(ran_f.read())
+
+			_, x_size, y_size, _ = model_f()
 
 			in_path = f"{IN_PATH_PREFIX}_{x_size}"
 			img_list = os.listdir(in_path)
-			train_val_ids, test_ids = get_split_ids(label_df)
-			train_val_ids = list(train_val_ids)
-			test_imgs = list(filter(lambda img: get_id_from_f_name(img) in test_ids, img_list))
 			plain_in_path = f"{IN_PLAIN_PATH_PREFIX}_{x_size}"
 			plain_img_list = os.listdir(plain_in_path)
-			plain_imgs = list(filter(lambda img: get_id_from_f_name(img) in test_ids, plain_img_list))
-			test_ds = FundusImageDataset(
-				in_path,
-				test_imgs,
-				label_df,
-				DME_LABEL,
-				is_grayscale=True
-			)
-			test_dl = DataLoader(test_ds, batch_size=BATCH_SIZE, shuffle=True)
-			plain_ds = FundusImageDataset(
-				plain_in_path,
-				plain_imgs,
-				label_df,
-				DME_LABEL,
-				is_grayscale=True
-			)
-			plain_dl = DataLoader(plain_ds, batch_size=BATCH_SIZE, shuffle=True)
+			dme_ok_ids, dme_bad_ids = get_ok_and_bad_ids(label_df)
+			folder = KFold(n_splits=FOLDS, shuffle=True, random_state=random_state)
+			dme_ok_folds = list(folder.split(dme_ok_ids))[last_fold + 1:]
+			dme_bad_folds = list(folder.split(dme_bad_ids))[last_fold + 1:]
 
-			for epoch in list(range(EPOCHS)):
-				folder = KFold(n_splits=FOLDS, shuffle=True)
-				best_model_foldwise = None
-				best_model_foldwise_acc = None
-				best_model_foldwise_train_conf_mat = None
-				best_model_foldwise_val_conf_mat = None
-				folds_acc_train_l = []
-				folds_loss_train_l = []
-				folds_acc_val_l = []
-				folds_loss_val_l = []
+			for fold, ((dme_ok_train_indices, dme_ok_test_indices), (dme_bad_train_indices, dme_bad_test_indices)) in enumerate(zip(dme_ok_folds, dme_bad_folds)):
+				train_ids = set([dme_ok_ids[i] for i in dme_ok_train_indices] + [dme_bad_ids[i] for i in dme_bad_train_indices])
+				test_ids = set([dme_ok_ids[i] for i in dme_ok_test_indices] + [dme_bad_ids[i] for i in dme_bad_test_indices])
+				train_imgs = list(filter(lambda img: get_id_from_f_name(img) in train_ids, img_list))
+				test_imgs = list(filter(lambda img: get_id_from_f_name(img) in test_ids, img_list))
+				plain_imgs = list(filter(lambda img: get_id_from_f_name(img) in test_ids, plain_img_list))
+				train_ds = FundusImageDataset(
+					in_path,
+					train_imgs,
+					label_df,
+					DME_LABEL,
+					is_grayscale=True
+				)
+				train_dl = DataLoader(train_ds, batch_size=BATCH_SIZE, shuffle=True)
+				test_ds = FundusImageDataset(
+					in_path,
+					test_imgs,
+					label_df,
+					DME_LABEL,
+					is_grayscale=True
+				)
+				test_dl = DataLoader(test_ds, batch_size=BATCH_SIZE, shuffle=True)
+				plain_ds = FundusImageDataset(
+					plain_in_path,
+					plain_imgs,
+					label_df,
+					DME_LABEL,
+					is_grayscale=True
+				)
+				plain_dl = DataLoader(plain_ds, batch_size=BATCH_SIZE, shuffle=True)
 
-				initial_model = copy.deepcopy(model)
+				start = datetime.now()
+				model, x_size, y_size, m_name = model_f()
+				print(f"Using: {m_name}")
+				model = model.to(device)
 
-				for fold, (train_indexes, val_indexes) in enumerate(folder.split(train_val_ids)):
+				optimizer = optim_f(model.parameters()) # b2 in previous version likely didn't work because I didn't update these, just the model ref
+				scheduler = schedul_f(optimizer, EPOCHS)
 
-					print(f"> Fold {fold + 1}")
-
-					model = initial_model
-					model = model.to(device)
-
-					train_ids = [train_val_ids[i] for i in train_indexes]
-					val_ids = [train_val_ids[i] for i in val_indexes]
-					train_imgs = list(filter(lambda img: get_id_from_f_name(img) in train_ids, img_list))
-					val_imgs = list(filter(lambda img: get_id_from_f_name(img) in val_ids, img_list))
-					train_ds = FundusImageDataset(
-						in_path,
-						train_imgs,
-						label_df,
-						DME_LABEL,
-						is_grayscale=True
-					)
-					train_dl = DataLoader(train_ds, batch_size=BATCH_SIZE, shuffle=True)
-					val_ds = FundusImageDataset(
-						in_path,
-						val_imgs,
-						label_df,
-						DME_LABEL,
-						is_grayscale=True
-					)
-					val_dl = DataLoader(val_ds, batch_size=BATCH_SIZE, shuffle=True)
+				for epoch in list(range(EPOCHS)):
 
 					model.train()
 					running_corrects_train = 0
@@ -416,10 +406,10 @@ def main() -> None:
 					train_conf_matrix: dict[(float, float), dict] = dict()
 					i_batch = 1
 					print(f"Train - {n_batches} batches, fold {fold + 1}")
-					for inputs, labels in train_dl:
+					for inputs, labels, _ in train_dl:
 						inputs = inputs.to(device)
 						labels = labels.float().to(device)
-						optimizer.zero_grad(set_to_none=True)
+						optimizer.zero_grad(set_to_none=True) # TODO: technically this doesn't matter but grad behaviour _might_ be different, try with False
 						if m_name == "inception_v3":
 							outputs, aux_outputs = model(inputs)
 							outputs = torch.squeeze(outputs)
@@ -443,136 +433,107 @@ def main() -> None:
 
 					with torch.no_grad():
 						model.eval()
-						running_corrects_val = 0
-						running_loss_val = 0.0
-						acc_val = -1.0
-						loss_val = -1.0
-						n_batches = len(val_dl)
-						val_conf_matrix: dict[(float, float), dict] = dict()
+						running_corrects_test = 0
+						running_loss_test = 0.0
+						acc_test = -1.0
+						loss_test = -1.0
+						n_batches = len(test_dl)
+						test_conf_matrix: dict[(float, float), dict] = dict()
+						failed_test_ids = set()
 						i_batch = 1
-						print(f"Validate - {n_batches} batches, fold {fold + 1} / {FOLDS}")
-						for inputs, labels in val_dl:
+						print(f"Test - {n_batches} batches, fold {fold + 1}")
+						for inputs, labels, ids in test_dl:
 							inputs = inputs.to(device)
 							labels = labels.float().to(device)
 							# optimizer.zero_grad()
 							outputs = torch.squeeze(model(inputs)) # squeezing is ok in binary classification
 							loss = criterion(outputs, labels)
 							preds = torch.sigmoid(outputs).round()
-							update_confusion_matrix(val_conf_matrix, labels.data, preds)
-							running_corrects_val += torch.sum(preds == labels.data).item()
-							running_loss_val += loss.item() * inputs.size(0)
+							update_confusion_matrix(test_conf_matrix, labels.data, preds)
+							correct_indices = preds == labels.data
+							incorrect_ids = [id for id, pred in zip(list(ids), correct_indices.tolist()) if not pred]
+							failed_test_ids.update(incorrect_ids)
+							running_corrects_test += torch.sum(correct_indices).item()
+							running_loss_test += loss.item() * inputs.size(0)
 							if i_batch % LOG_EVERY_BATCHES_AMOUNT == 0:
 								print(f"{str(datetime.now().strftime('%Y-%m-%d %H:%M:%S'))} > {i_batch} / {n_batches}, {fold + 1} / {FOLDS}")
 							i_batch = i_batch + 1
-						loss_val = running_loss_val / len(test_ds)
-						acc_val = running_corrects_val / len(test_ds)
+						loss_test = running_loss_test / len(test_ds)
+						acc_test = running_corrects_test / len(test_ds)
 
-					if best_model_foldwise is None or acc_val > best_model_foldwise_acc:
-						best_model_foldwise = copy.deepcopy(model)
-						best_model_foldwise_acc = acc_val
-						best_model_foldwise_train_conf_mat = train_conf_matrix
-						best_model_foldwise_val_conf_mat = val_conf_matrix
+					with torch.no_grad():
+						model.eval()
+						running_corrects_plain = 0
+						running_loss_plain = 0.0
+						acc_plain = -1.0
+						loss_plain = -1.0
+						n_batches = len(plain_dl)
+						plain_conf_matrix: dict[(float, float), dict] = dict()
+						failed_plain_ids = set()
+						i_batch = 1
+						print(f"Plain - {n_batches} batches, fold {fold + 1}")
+						for inputs, labels, ids in plain_dl:
+							inputs = inputs.to(device)
+							labels = labels.float().to(device)
+							# optimizer.zero_grad()
+							outputs = torch.squeeze(model(inputs)) # squeezing is ok in binary classification
+							loss = criterion(outputs, labels)
+							preds = torch.sigmoid(outputs).round()
+							update_confusion_matrix(plain_conf_matrix, labels.data, preds)
+							correct_indices = preds == labels.data
+							incorrect_ids = [id for id, pred in zip(list(ids), correct_indices.tolist()) if not pred]
+							failed_plain_ids.update(incorrect_ids)
+							running_corrects_plain += torch.sum(correct_indices).item()
+							running_loss_plain += loss.item() * inputs.size(0)
+							if i_batch % LOG_EVERY_BATCHES_AMOUNT == 0:
+								print(f"{str(datetime.now().strftime('%Y-%m-%d %H:%M:%S'))} > {i_batch} / {n_batches}, {fold + 1} / {FOLDS}")
+							i_batch = i_batch + 1
+						loss_plain = running_loss_plain / len(plain_ds)
+						acc_plain = running_corrects_plain / len(plain_ds)
 
-					folds_acc_train_l.append(acc_train)
-					folds_loss_train_l.append(loss_train)
-					folds_acc_val_l.append(acc_val)
-					folds_loss_val_l.append(loss_val)
+					stop = datetime.now()
 
-					model = model.to("cpu")
+					model_data = get_model_data(
+						acc_train,
+						loss_train,
+						loss_test,
+						acc_test,
+						failed_test_ids,
+						loss_plain,
+						acc_plain,
+						failed_plain_ids,
+						epoch + 1,
+						EPOCHS,
+						BATCH_SIZE,
+						fold + 1,
+						FOLDS,
+						criterion,
+						optimizer,
+						m_name,
+						scheduler,
+						stop - start,
+						len(train_ds),
+						len(test_ds),
+						len(plain_ds),
+						test_conf_matrix,
+						plain_conf_matrix
+					)
+					out_data = json.dumps(model_data)
+					print(out_data)
+					f_out.write(out_data)
+					f_out.write("\n")
+					f_out.flush()
 
-				model = best_model_foldwise
-				model.to(device)
-
-				with torch.no_grad():
-					model.eval()
-					running_corrects_test = 0
-					running_loss_test = 0.0
-					acc_test = -1.0
-					loss_test = -1.0
-					n_batches = len(test_dl)
-					test_conf_matrix: dict[(float, float), dict] = dict()
-					i_batch = 1
-					print(f"Test - {n_batches} batches")
-					for inputs, labels in test_dl:
-						inputs = inputs.to(device)
-						labels = labels.float().to(device)
-						# optimizer.zero_grad()
-						outputs = torch.squeeze(model(inputs)) # squeezing is ok in binary classification
-						loss = criterion(outputs, labels)
-						preds = torch.sigmoid(outputs).round()
-						update_confusion_matrix(test_conf_matrix, labels.data, preds)
-						running_corrects_test += torch.sum(preds == labels.data).item()
-						running_loss_test += loss.item() * inputs.size(0)
-						if i_batch % LOG_EVERY_BATCHES_AMOUNT == 0:
-							print(f"{str(datetime.now().strftime('%Y-%m-%d %H:%M:%S'))} > {i_batch} / {n_batches}")
-						i_batch = i_batch + 1
-					loss_test = running_loss_test / len(test_ds)
-					acc_test = running_corrects_test / len(test_ds)
-
-				with torch.no_grad():
-					model.eval()
-					running_corrects_plain = 0
-					running_loss_plain = 0.0
-					acc_plain = -1.0
-					loss_plain = -1.0
-					n_batches = len(plain_dl)
-					plain_conf_matrix: dict[(float, float), dict] = dict()
-					i_batch = 1
-					print(f"Plain - {n_batches} batches")
-					for inputs, labels in plain_dl:
-						inputs = inputs.to(device)
-						labels = labels.float().to(device)
-						# optimizer.zero_grad()
-						outputs = torch.squeeze(model(inputs)) # squeezing is ok in binary classification
-						loss = criterion(outputs, labels)
-						preds = torch.sigmoid(outputs).round()
-						update_confusion_matrix(plain_conf_matrix, labels.data, preds)
-						running_corrects_plain += torch.sum(preds == labels.data).item()
-						running_loss_plain += loss.item() * inputs.size(0)
-						if i_batch % LOG_EVERY_BATCHES_AMOUNT == 0:
-							print(f"{str(datetime.now().strftime('%Y-%m-%d %H:%M:%S'))} > {i_batch} / {n_batches}")
-						i_batch = i_batch + 1
-					loss_plain = running_loss_plain / len(plain_ds)
-					acc_plain = running_corrects_plain / len(plain_ds)
-
-				stop = datetime.now()
-
-				model_data = get_model_data(
-					folds_acc_train_l,
-					folds_loss_train_l,
-					folds_acc_val_l,
-					folds_loss_val_l,
-					loss_test,
-					acc_test,
-					loss_plain,
-					acc_plain,
-					epoch + 1,
-					EPOCHS,
-					BATCH_SIZE,
-					FOLDS,
-					criterion,
-					optimizer,
-					m_name,
-					scheduler,
-					stop - start,
-					len(train_val_ids),
-					len(test_ds),
-					len(plain_ds),
-					test_conf_matrix,
-					plain_conf_matrix
-				)
-				out_data = json.dumps(model_data)
-				print(out_data)
-				f_out.write(out_data)
-				f_out.write("\n")
-				f_out.flush()
-
-				if stat.mean(folds_acc_train_l) >= 0.99:
-					break
+				with open(LAST_FOLD_DONE_FILE, "w") as f_lf:
+					last_fold += 1
+					f_lf.write(str(last_fold))
 
 			with open(LAST_EPISODE_DONE_FILE, "w") as f_le:
 				last_episode += 1
 				f_le.write(str(last_episode))
+
+			with open(RANDOM_STATE_FILE, "w") as ran_f:
+				ran_f.write(str(random.randint(0, 9999999)))
 
 
 if __name__ == "__main__":

@@ -19,7 +19,7 @@ def main(out_size: int, out_path: str = AUGMENTATION_PLAIN_OUT_PATH) -> None:
 	transform = (FundusTransformation()
 		.compose(al.CLAHE(clip_limit=2.0, tile_grid_size=(8, 8), p=1.0), name="clahe")
 		.compose(crop_circle_from_img)
-		.compose(al.ToGray(p=1.0), name="exGreen")
+		.compose(al.ToGray(p=1.0), name="gscale")
 		.compose(al.Resize(OUT_SIZE, OUT_SIZE, p=1.0), name=""))
 
 	label_df = pd.read_csv(IN_PATH)
