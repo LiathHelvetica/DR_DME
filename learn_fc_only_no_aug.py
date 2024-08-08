@@ -65,9 +65,6 @@ def get_model_data(
 	loss_test,
 	acc_test,
 	failed_ids_test,
-	loss_plain,
-	acc_plain,
-	failed_ids_plain,
 	epoch,
 	epochs,
 	batch_size,
@@ -80,9 +77,7 @@ def get_model_data(
 	t_delta,
 	test_val_size,
 	test_size,
-	plain_size,
 	test_conf_matrix,
-	plain_conf_matrix
 ) -> dict:
 	return {
 		TRAIN_ACC_KEY: train_acc,
@@ -90,9 +85,6 @@ def get_model_data(
 		TEST_ACC_KEY: acc_test,
 		TEST_LOSS_KEY: loss_test,
 		TEST_FAILED_IDS_KEY: list(failed_ids_test),
-		PLAIN_ACC_KEY: acc_plain,
-		PLAIN_LOSS_KEY: loss_plain,
-		PLAIN_FAILED_IDS_KEY: list(failed_ids_plain),
 		EPOCH_KEY: epoch,
 		TOTAL_EPOCHS_KEY: epochs,
 		BATCH_SIZE_KEY: batch_size,
@@ -109,9 +101,7 @@ def get_model_data(
 		T_DELTA_KEY: str(t_delta),
 		N_SAMPLES_TRAIN_AND_VAL_KEY: test_val_size,
 		N_SAMPLES_TEST_KEY: test_size,
-		N_SAMPLES_PLAIN_KEY: plain_size,
 		CONFUSION_MATRIX_TEST_KEY: list(test_conf_matrix.values()),
-		CONFUSION_MATRIX_PLAIN_KEY: list(plain_conf_matrix.values())
 	}
 
 
@@ -208,8 +198,7 @@ def model_last_layer_head(f_model_create, device, n_outputs, x, y, m_name):
 	return op
 
 
-IN_PATH_PREFIX = AUGMENTATION_OUT_PATH
-IN_PLAIN_PATH_PREFIX = AUGMENTATION_PLAIN_OUT_PATH
+IN_PATH_PREFIX = AUGMENTATION_PLAIN_OUT_PATH
 LABELS_PATH = COMBINED_LABEL_PATH
 
 
@@ -254,8 +243,11 @@ def main() -> None:
 		regnet(lambda: models.regnet_x_1_6gf(weights=models.RegNet_X_1_6GF_Weights.IMAGENET1K_V2), device, 1, 232, 232, "regnet_x_1_6gf_v2"),
 		regnet(lambda: models.regnet_x_3_2gf(weights=models.RegNet_X_3_2GF_Weights.IMAGENET1K_V1), device, 1, 224, 224, "regnet_x_3_2gf_v1"),
 		regnet(lambda: models.regnet_x_3_2gf(weights=models.RegNet_X_3_2GF_Weights.IMAGENET1K_V2), device, 1, 232, 232, "regnet_x_3_2gf_v2"),
+		resnext(lambda: models.resnext101_64x4d(weights=models.ResNeXt101_64X4D_Weights.IMAGENET1K_V1), device, 1, 232, 232, "resnext101_64x4d_v1"),
 		####
 		convnext(lambda: models.convnext_tiny(weights=models.ConvNeXt_Tiny_Weights.IMAGENET1K_V1), device, 1, 236, 236, "convnext_tiny"),
+		convnext(lambda: models.convnext_small(weights=models.ConvNeXt_Small_Weights.IMAGENET1K_V1), device, 1, 230, 230, "convnext_small"),
+		convnext(lambda: models.convnext_base(weights=models.ConvNeXt_Base_Weights.IMAGENET1K_V1), device, 1, 232, 232, "convnext_base"),
 		efficientnet(lambda: models.efficientnet_b0(weights=models.EfficientNet_B0_Weights.IMAGENET1K_V1), device, 1, 256, 256, "efficientnet_b0"),
 		efficientnet(lambda: models.efficientnet_b1(weights=models.EfficientNet_B1_Weights.IMAGENET1K_V1), device, 1, 256, 256, "efficientnet_b1"),
 		efficientnet(lambda: models.efficientnet_b2(weights=models.EfficientNet_B2_Weights.IMAGENET1K_V1), device, 1, 288, 288, "efficientnet_b2"),
@@ -269,13 +261,10 @@ def main() -> None:
 		swin(lambda: models.swin_v2_t(weights=models.Swin_V2_T_Weights.IMAGENET1K_V1), device, 1, 260, 260, "swin_v2_t"),
 		swin(lambda: models.swin_v2_s(weights=models.Swin_V2_S_Weights.IMAGENET1K_V1), device, 1, 260, 260, "swin_v2_s"),
 		####
-		regnet(lambda: models.regnet_x_8gf(weights=models.RegNet_X_8GF_Weights.IMAGENET1K_V1), device, 1, 224, 224, "regnet_x_8gf_v1"),
-		regnet(lambda: models.regnet_x_8gf(weights=models.RegNet_X_8GF_Weights.IMAGENET1K_V2), device, 1, 232, 232, "regnet_x_8gf_v2"),
 		regnet(lambda: models.regnet_y_8gf(weights=models.RegNet_Y_8GF_Weights.IMAGENET1K_V1), device, 1, 224, 224, "regnet_y_8gf_v1"),
 		regnet(lambda: models.regnet_y_8gf(weights=models.RegNet_Y_8GF_Weights.IMAGENET1K_V2), device, 1, 232, 232, "regnet_y_8gf_v2"),
-		resnext(lambda: models.resnext101_64x4d(weights=models.ResNeXt101_64X4D_Weights.IMAGENET1K_V1), device, 1, 232, 232, "resnext101_64x4d_v1"),
-		convnext(lambda: models.convnext_small(weights=models.ConvNeXt_Small_Weights.IMAGENET1K_V1), device, 1, 230, 230, "convnext_small"),
-		convnext(lambda: models.convnext_base(weights=models.ConvNeXt_Base_Weights.IMAGENET1K_V1), device, 1, 232, 232, "convnext_base"),
+		regnet(lambda: models.regnet_x_8gf(weights=models.RegNet_X_8GF_Weights.IMAGENET1K_V1), device, 1, 224, 224, "regnet_x_8gf_v1"),
+		regnet(lambda: models.regnet_x_8gf(weights=models.RegNet_X_8GF_Weights.IMAGENET1K_V2), device, 1, 232, 232, "regnet_x_8gf_v2"),
 		####
 		# model_last_layer_fc(lambda: models.regnet_x_16gf(weights=models.RegNet_X_16GF_Weights.IMAGENET1K_V1), device, 1, 224, 224, "regnet_x_16gf_v1"),
 		# model_last_layer_fc(lambda: models.regnet_x_16gf(weights=models.RegNet_X_16GF_Weights.IMAGENET1K_V2), device, 1, 232, 232, "regnet_x_16gf_v2"),
@@ -350,8 +339,6 @@ def main() -> None:
 
 			in_path = f"{IN_PATH_PREFIX}_{x_size}"
 			img_list = os.listdir(in_path)
-			plain_in_path = f"{IN_PLAIN_PATH_PREFIX}_{x_size}"
-			plain_img_list = os.listdir(plain_in_path)
 			dme_ok_ids, dme_bad_ids = get_ok_and_bad_ids(label_df)
 			folder = KFold(n_splits=FOLDS, shuffle=True, random_state=random_state)
 			dme_ok_folds = list(folder.split(dme_ok_ids))[last_fold + 1:]
@@ -362,7 +349,6 @@ def main() -> None:
 				test_ids = set([dme_ok_ids[i] for i in dme_ok_test_indices] + [dme_bad_ids[i] for i in dme_bad_test_indices])
 				train_imgs = list(filter(lambda img: get_id_from_f_name(img) in train_ids, img_list))
 				test_imgs = list(filter(lambda img: get_id_from_f_name(img) in test_ids, img_list))
-				plain_imgs = list(filter(lambda img: get_id_from_f_name(img) in test_ids, plain_img_list))
 				train_ds = FundusImageDataset(
 					in_path,
 					train_imgs,
@@ -379,14 +365,6 @@ def main() -> None:
 					is_grayscale=True
 				)
 				test_dl = DataLoader(test_ds, batch_size=BATCH_SIZE, shuffle=True)
-				plain_ds = FundusImageDataset(
-					plain_in_path,
-					plain_imgs,
-					label_df,
-					DME_LABEL,
-					is_grayscale=True
-				)
-				plain_dl = DataLoader(plain_ds, batch_size=BATCH_SIZE, shuffle=True)
 
 				start = datetime.now()
 				model, x_size, y_size, m_name = model_f()
@@ -462,36 +440,6 @@ def main() -> None:
 						loss_test = running_loss_test / len(test_ds)
 						acc_test = running_corrects_test / len(test_ds)
 
-					with torch.no_grad():
-						model.eval()
-						running_corrects_plain = 0
-						running_loss_plain = 0.0
-						acc_plain = -1.0
-						loss_plain = -1.0
-						n_batches = len(plain_dl)
-						plain_conf_matrix: dict[(float, float), dict] = dict()
-						failed_plain_ids = set()
-						i_batch = 1
-						print(f"Plain - {n_batches} batches, fold {last_fold + fold + 1}")
-						for inputs, labels, ids in plain_dl:
-							inputs = inputs.to(device)
-							labels = labels.float().to(device)
-							# optimizer.zero_grad()
-							outputs = torch.squeeze(model(inputs)) # squeezing is ok in binary classification
-							loss = criterion(outputs, labels)
-							preds = torch.sigmoid(outputs).round()
-							update_confusion_matrix(plain_conf_matrix, labels.data, preds)
-							correct_indices = preds == labels.data
-							incorrect_ids = [id for id, pred in zip(list(ids), correct_indices.tolist()) if not pred]
-							failed_plain_ids.update(incorrect_ids)
-							running_corrects_plain += torch.sum(correct_indices).item()
-							running_loss_plain += loss.item() * inputs.size(0)
-							if i_batch % LOG_EVERY_BATCHES_AMOUNT == 0:
-								print(f"{str(datetime.now().strftime('%Y-%m-%d %H:%M:%S'))} > {i_batch} / {n_batches}, {last_fold + fold + 1} / {FOLDS}")
-							i_batch = i_batch + 1
-						loss_plain = running_loss_plain / len(plain_ds)
-						acc_plain = running_corrects_plain / len(plain_ds)
-
 					stop = datetime.now()
 
 					model_data = get_model_data(
@@ -500,9 +448,6 @@ def main() -> None:
 						loss_test,
 						acc_test,
 						failed_test_ids,
-						loss_plain,
-						acc_plain,
-						failed_plain_ids,
 						epoch + 1,
 						EPOCHS,
 						BATCH_SIZE,
@@ -515,9 +460,7 @@ def main() -> None:
 						stop - start,
 						len(train_ds),
 						len(test_ds),
-						len(plain_ds),
 						test_conf_matrix,
-						plain_conf_matrix
 					)
 					out_data = json.dumps(model_data)
 					print(out_data)
