@@ -13,7 +13,7 @@ from sklearn.model_selection import train_test_split
 
 from itertools import product
 
-from constants import AUGMENTATION_OUT_PATH, COMBINED_LABEL_PATH, DME_LABEL, ID_LABEL, TEST_SPLIT_VALUE, TRAIN_DATASET_LABEL, TEST_DATASET_LABEL, LEARN_OUT_PATH, LAST_EPISODE_DONE_FILE, BATCH_SIZE, EPOCHS, LOG_EVERY_BATCHES_AMOUNT, MODEL_CHECKPOINT_OUT_PATH, LAST_EPOCH_DONE_FILE, CONFUSION_MATRIX_ORIGINAL_VALUE_LABEL, CONFUSION_MATRIX_PREDICTION_VALUE_LABEL, CONFUSION_MATRIX_COUNT_LABEL, TRAIN_ACC_KEY, TRAIN_LOSS_KEY, TEST_ACC_KEY, TEST_LOSS_KEY, EPOCH_KEY, BATCH_SIZE_KEY, CRITERION_KEY, OPTIMIZER_NAME_KEY, OPTIMIZER_LR_KEY, OPTIMIZER_MOMENTUM_KEY, BASE_MODEL_NAME_KEY, SCHEDULER_NAME_KEY, SCHEDULER_STEP_SIZE_KEY, SCHEDULER_GAMMA_KEY, T_DELTA_KEY, N_SAMPLES_TRAIN_KEY, N_SAMPLES_TEST_KEY, N_CORRECT_TRAIN_KEY, N_CORRECT_TEST_KEY, CONFUSION_MATRIX_TRAIN_KEY, CONFUSION_MATRIX_TEST_KEY, AUGMENTATION_PLAIN_OUT_PATH, PLAIN_DATASET_LABEL, PLAIN_ACC_KEY, PLAIN_LOSS_KEY, N_SAMPLES_PLAIN_KEY, N_CORRECT_PLAIN_KEY, CONFUSION_MATRIX_PLAIN_KEY
+from constants import AUGMENTATION_OUT_PATH, COMBINED_LABEL_PATH, DME_LABEL, ID_LABEL, TEST_SPLIT_VALUE, TRAIN_DATASET_LABEL, TEST_DATASET_LABEL, LEARN_OUT_PATH, LAST_EPISODE_DONE_FILE, BATCH_SIZE, EPOCHS, LOG_EVERY_BATCHES_AMOUNT, MODEL_CHECKPOINT_OUT_PATH, LAST_EPOCH_DONE_FILE, CONFUSION_MATRIX_ORIGINAL_VALUE_LABEL, CONFUSION_MATRIX_PREDICTION_VALUE_LABEL, CONFUSION_MATRIX_COUNT_LABEL, TRAIN_ACC_KEY, TRAIN_LOSS_KEY, TEST_ACC_KEY, TEST_LOSS_KEY, EPOCH_KEY, BATCH_SIZE_KEY, CRITERION_KEY, OPTIMIZER_NAME_KEY, OPTIMIZER_LR_KEY, OPTIMIZER_MOMENTUM_KEY, BASE_MODEL_NAME_KEY, SCHEDULER_NAME_KEY, SCHEDULER_STEP_SIZE_KEY, SCHEDULER_GAMMA_KEY, T_DELTA_KEY, N_SAMPLES_TRAIN_KEY, N_SAMPLES_TEST_KEY, N_CORRECT_TRAIN_KEY, N_CORRECT_TEST_KEY, CONFUSION_MATRIX_TRAIN_KEY, CONFUSION_MATRIX_TEST_KEY, AUGMENTATION_PLAIN_OUT_PATH, PLAIN_DATASET_LABEL, PLAIN_ACC_KEY, PLAIN_LOSS_KEY, N_SAMPLES_PLAIN_KEY, N_CORRECT_PLAIN_KEY, CONFUSION_MATRIX_PLAIN_KEY, TEST_FAILED_IDS_KEY, PLAIN_FAILED_IDS_KEY
 from fundus_dataset import FundusImageDataset
 from img_util import get_id_from_f_name
 from no_op_scheduler import NoOpScheduler
@@ -51,8 +51,10 @@ def get_model_data(
 	epoch_loss_train,
 	epoch_acc_val,
 	epoch_loss_val,
+	failed_val_ids,
 	epoch_acc_plain,
 	epoch_loss_plain,
+	failed_plain_ids,
 	epoch,
 	batch_size,
 	criterion,
@@ -71,29 +73,31 @@ def get_model_data(
 	plain_conf_matrix
 ) -> dict:
 	return {
-		TRAIN_ACC_KEY: epoch_acc_train.item(),
+		TRAIN_ACC_KEY: epoch_acc_train,
 		TRAIN_LOSS_KEY: epoch_loss_train,
-		TEST_ACC_KEY: epoch_acc_val.item(),
+		TEST_ACC_KEY: epoch_acc_val,
 		TEST_LOSS_KEY: epoch_loss_val,
-		PLAIN_ACC_KEY: epoch_acc_plain.item(),
+		TEST_FAILED_IDS_KEY: list(failed_val_ids),
+		PLAIN_ACC_KEY: epoch_acc_plain,
 		PLAIN_LOSS_KEY: epoch_loss_plain,
+		PLAIN_FAILED_IDS_KEY: list(failed_plain_ids),
 		EPOCH_KEY: epoch,
 		BATCH_SIZE_KEY: batch_size,
 		CRITERION_KEY: type(criterion).__name__,
 		OPTIMIZER_NAME_KEY: type(optimizer).__name__,
 		OPTIMIZER_LR_KEY: optimizer.defaults["lr"],
-		OPTIMIZER_MOMENTUM_KEY: try_or_else(lambda: optimizer.defaults["momentum"], "-"),
+		OPTIMIZER_MOMENTUM_KEY: try_or_else(lambda: optimizer.defaults["momentum"], None),
 		BASE_MODEL_NAME_KEY: m_name,
 		SCHEDULER_NAME_KEY: type(scheduler).__name__,
-		SCHEDULER_STEP_SIZE_KEY: try_or_else(lambda: scheduler.step_size, "-"),
-		SCHEDULER_GAMMA_KEY: try_or_else(lambda: scheduler.gamma, "-"),
+		SCHEDULER_STEP_SIZE_KEY: try_or_else(lambda: scheduler.step_size, None),
+		SCHEDULER_GAMMA_KEY: try_or_else(lambda: scheduler.gamma, None),
 		T_DELTA_KEY: str(t_delta),
 		N_SAMPLES_TRAIN_KEY: len_train_ds,
 		N_SAMPLES_TEST_KEY: len_test_ds,
 		N_SAMPLES_PLAIN_KEY: len_plain_ds,
-		N_CORRECT_TRAIN_KEY: running_corrects_train.item(),
-		N_CORRECT_TEST_KEY: running_corrects_val.item(),
-		N_CORRECT_PLAIN_KEY: running_corrects_plain.item(),
+		N_CORRECT_TRAIN_KEY: running_corrects_train,
+		N_CORRECT_TEST_KEY: running_corrects_val,
+		N_CORRECT_PLAIN_KEY: running_corrects_plain,
 		CONFUSION_MATRIX_TRAIN_KEY: list(train_conf_matrix.values()),
 		CONFUSION_MATRIX_TEST_KEY: list(val_conf_matrix.values()),
 		CONFUSION_MATRIX_PLAIN_KEY: list(plain_conf_matrix.values())
@@ -212,7 +216,8 @@ def get_dataloader(in_size: int, label_df: DataFrame) -> dict[str, DataLoader]:
 
 def main() -> None:
 	label_df = read_csv(LABELS_PATH)
-	sizes = [260, 272, 246, 238, 518, 480, 600, 528, 456, 320, 288, 256, 342, 230, 236, 384, 224, 232]
+	# sizes = [260, 272, 246, 238, 518, 480, 600, 528, 456, 320, 288, 256, 342, 230, 236, 384, 224, 232]
+	sizes = [224, 232, 320, 384, 480, 456, 528, 600, 518]
 	dataloaders = {size: get_dataloader(size, label_df) for size in sizes}
 	device = "cuda"
 	classes = torch.tensor([0, 1])
@@ -322,6 +327,7 @@ def main() -> None:
 		model_last_layer_sequential_classifier(lambda: models.efficientnet_b4(weights=models.EfficientNet_B4_Weights.IMAGENET1K_V1), device, 1, 384, 384, "efficientnet_b4"),
 		model_last_layer_sequential_classifier(lambda: models.efficientnet_v2_s(weights=models.EfficientNet_V2_S_Weights.IMAGENET1K_V1), device, 1, 384, 384, "efficientnet_v2_s"),
 		model_last_layer_sequential_classifier(lambda: models.efficientnet_v2_m(weights=models.EfficientNet_V2_M_Weights.IMAGENET1K_V1), device, 1, 480, 480, "efficientnet_v2_m"),
+
 		model_last_layer_fc(lambda: models.regnet_y_128gf(weights=models.RegNet_Y_128GF_Weights.IMAGENET1K_SWAG_E2E_V1), device, 1, 384, 384, "regnet_y_128gf"),
 		model_last_layer_fc(lambda: models.regnet_y_128gf(weights=models.RegNet_Y_128GF_Weights.IMAGENET1K_SWAG_LINEAR_V1), device, 1, 224, 224, "regnet_y_128gf"),
 		model_last_layer_sequential_classifier(lambda: models.efficientnet_b5(weights=models.EfficientNet_B5_Weights.IMAGENET1K_V1), device, 1, 456, 456, "efficientnet_b5"),
@@ -386,6 +392,13 @@ def main() -> None:
 			optimizer = optim_f(model.parameters())
 			scheduler = schedul_f(optimizer, EPOCHS)
 
+			if "SGD" == type(optimizer).__name__:
+				print("Skipping SGD")
+				with open(LAST_EPISODE_DONE_FILE, "w") as f_le:
+					last_episode += 1
+					f_le.write(str(last_episode))
+				continue
+
 			last_epoch = -1
 			with open(LAST_EPOCH_DONE_FILE, "r") as f_lep:
 				last_epoch = int(f_lep.read())
@@ -397,7 +410,7 @@ def main() -> None:
 			for epoch in list(range(EPOCHS))[last_epoch + 1:]:
 				model.train()
 				running_corrects_train = 0
-				running_loss_train = 0
+				running_loss_train = 0.0
 				epoch_acc_train = -1.0
 				epoch_loss_train = -1.0
 				n_batches = len(train_dataloader)
@@ -418,7 +431,7 @@ def main() -> None:
 						loss = criterion(outputs, labels)
 					preds = torch.sigmoid(outputs).round()
 					update_confusion_matrix(train_conf_matrix, labels.data, preds)
-					running_corrects_train += torch.sum(preds == labels.data)
+					running_corrects_train += torch.sum(preds == labels.data).item()
 					running_loss_train += loss.item() * inputs.size(0)
 					loss.backward()
 					optimizer.step()
@@ -437,6 +450,7 @@ def main() -> None:
 					epoch_loss_val = -1.0
 					n_batches = len(test_dataloader)
 					val_conf_matrix: dict[(float, float), dict] = dict()
+					failed_val_ids = set()
 					i_batch = 1
 					print(f"Validate - {n_batches} batches")
 					for inputs, labels, ids in test_dataloader:
@@ -447,7 +461,10 @@ def main() -> None:
 						loss = criterion(outputs, labels)
 						preds = torch.sigmoid(outputs).round()
 						update_confusion_matrix(val_conf_matrix, labels.data, preds)
-						running_corrects_val += torch.sum(preds == labels.data)
+						correct_indices = preds == labels.data
+						incorrect_ids = [id for id, pred in zip(list(ids), correct_indices.tolist()) if not pred]
+						failed_val_ids.update(incorrect_ids)
+						running_corrects_val += torch.sum(correct_indices).item()
 						running_loss_val += loss.item() * inputs.size(0)
 						if i_batch % LOG_EVERY_BATCHES_AMOUNT == 0:
 							print(f"{str(datetime.now().strftime('%Y-%m-%d %H:%M:%S'))} > {i_batch} / {n_batches}")
@@ -463,9 +480,10 @@ def main() -> None:
 					epoch_loss_plain = -1.0
 					n_batches = len(plain_dataloader)
 					plain_conf_matrix: dict[(float, float), dict] = dict()
+					failed_plain_ids = set()
 					i_batch = 1
 					print(f"Plain - {n_batches} batches")
-					for inputs, labels, _ in plain_dataloader:
+					for inputs, labels, ids in plain_dataloader:
 						inputs = inputs.to(device)
 						labels = labels.float().to(device)
 						# optimizer.zero_grad()
@@ -473,7 +491,10 @@ def main() -> None:
 						loss = criterion(outputs, labels)
 						preds = torch.sigmoid(outputs).round()
 						update_confusion_matrix(plain_conf_matrix, labels.data, preds)
-						running_corrects_plain += torch.sum(preds == labels.data)
+						correct_indices = preds == labels.data
+						incorrect_ids = [id for id, pred in zip(list(ids), correct_indices.tolist()) if not pred]
+						failed_plain_ids.update(incorrect_ids)
+						running_corrects_plain += torch.sum(correct_indices).item()
 						running_loss_plain += loss.item() * inputs.size(0)
 						if i_batch % LOG_EVERY_BATCHES_AMOUNT == 0:
 							print(f"{str(datetime.now().strftime('%Y-%m-%d %H:%M:%S'))} > {i_batch} / {n_batches}")
@@ -489,8 +510,10 @@ def main() -> None:
 					epoch_loss_train,
 					epoch_acc_val,
 					epoch_loss_val,
+					failed_val_ids,
 					epoch_acc_plain,
 					epoch_loss_plain,
+					failed_plain_ids,
 					epoch + 1,
 					BATCH_SIZE,
 					criterion,

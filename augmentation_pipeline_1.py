@@ -22,7 +22,7 @@ def main(out_size: int, out_path: str = AUGMENTATION_OUT_PATH) -> None:
 
 	safe_transforms = [
 		FundusTransformation()
-		.compose(al.CLAHE(clip_limit=4.0, tile_grid_size=(4, 4), p=1.0), name="clahe")
+		.compose(al.CLAHE(clip_limit=2.0, tile_grid_size=(8, 8), p=1.0), name="clahe")
 		.compose(crop_circle_from_img)
 	]
 

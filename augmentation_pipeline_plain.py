@@ -17,7 +17,7 @@ def main(out_size: int, out_path: str = AUGMENTATION_PLAIN_OUT_PATH) -> None:
 	OUT_PATH = f"{out_path}_{out_size}"
 
 	transform = (FundusTransformation()
-		.compose(al.CLAHE(clip_limit=4.0, tile_grid_size=(4, 4), p=1.0), name="")
+		.compose(al.CLAHE(clip_limit=2.0, tile_grid_size=(8, 8), p=1.0), name="")
 		.compose(crop_circle_from_img)
 		.compose(al.Resize(OUT_SIZE, OUT_SIZE, p=1.0), name=""))
 
